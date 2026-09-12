@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Real bot data and resolved Discord names never get committed.
+/data/*.sqlite3
+/config/users.json
+/config/channels.json
+
+node_modules/
