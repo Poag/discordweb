@@ -8,6 +8,7 @@
     graphThreshold: 300,
     graphSearch: "",
     selectedGame: null,
+    wrappedControlsLoaded: false,
   };
 
   // ---------- small helpers ----------
@@ -111,6 +112,10 @@
       btn.classList.add("active");
       document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
       if (btn.dataset.tab === "graph" && !state.graphData) loadGraph();
+      if (btn.dataset.tab === "wrapped" && !state.wrappedControlsLoaded) {
+        state.wrappedControlsLoaded = true;
+        initWrappedControls();
+      }
     });
   }
 
@@ -519,6 +524,173 @@
     window.addEventListener("resize", () => {
       if (document.getElementById("tab-graph").classList.contains("active")) renderGraph();
     });
+  }
+
+  // ---------- your year ----------
+
+  async function initWrappedControls() {
+    const userSelect = document.getElementById("wrapped-user");
+    const yearSelect = document.getElementById("wrapped-year");
+
+    const [usersData, yearsData] = await Promise.all([api("/api/users"), api("/api/years")]);
+
+    usersData.users.forEach((u) => userSelect.appendChild(el("option", { value: u.id, text: u.name })));
+    yearsData.years.forEach((y) => yearSelect.appendChild(el("option", { value: y, text: y })));
+    if (yearsData.years.length) yearSelect.value = yearsData.years[0];
+
+    userSelect.addEventListener("change", loadWrapped);
+    yearSelect.addEventListener("change", loadWrapped);
+
+    const empty = document.getElementById("wrapped-empty");
+    empty.textContent = "Pick a person to see their recap.";
+    empty.hidden = false;
+  }
+
+  async function loadWrapped() {
+    const userSelect = document.getElementById("wrapped-user");
+    const yearSelect = document.getElementById("wrapped-year");
+    const userId = userSelect.value;
+    const year = yearSelect.value;
+    const content = document.getElementById("wrapped-content");
+    const empty = document.getElementById("wrapped-empty");
+    content.innerHTML = "";
+    empty.hidden = true;
+
+    if (!userId || !year) {
+      empty.textContent = "Pick a person to see their recap.";
+      empty.hidden = false;
+      return;
+    }
+
+    const url = new URL("/api/wrapped", window.location.origin);
+    url.searchParams.set("user_id", userId);
+    url.searchParams.set("year", year);
+    if (state.guildId) url.searchParams.set("guild_id", state.guildId);
+
+    showLoading(true);
+    try {
+      const res = await fetch(url);
+      if (res.status === 404) {
+        const personName = userSelect.selectedOptions[0] ? userSelect.selectedOptions[0].textContent : "this person";
+        empty.textContent = `No activity logged for ${personName} in ${year}.`;
+        empty.hidden = false;
+        return;
+      }
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `${res.status} ${res.statusText}`);
+      }
+      renderWrapped(await res.json());
+    } catch (err) {
+      showError(err.message || String(err));
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  function renderWrapped(data) {
+    const content = document.getElementById("wrapped-content");
+    content.innerHTML = "";
+    document.getElementById("wrapped-empty").hidden = true;
+
+    const totalSeconds = data.voice_seconds + data.game_seconds;
+
+    content.appendChild(el("div", { class: "wrapped-hero" }, [
+      el("div", { class: "wrapped-kicker", text: `${data.year} Year in Review` }),
+      el("h2", { text: data.user.name }),
+      el("div", {
+        class: "wrapped-hero-sub",
+        text: `Active on ${data.active_days} day${data.active_days === 1 ? "" : "s"} this year`,
+      }),
+      el("div", { class: "wrapped-hero-figure" }, [
+        document.createTextNode(formatDuration(totalSeconds)),
+        el("span", { class: "unit", text: "in voice & games combined" }),
+      ]),
+    ]));
+
+    const tiles = [
+      {
+        label: "Voice time",
+        value: formatDuration(data.voice_seconds),
+        sub: data.voice_rank ? `#${data.voice_rank.rank} of ${data.voice_rank.of} on the server` : "No voice activity",
+      },
+      {
+        label: "Game time",
+        value: formatDuration(data.game_seconds),
+        sub: data.game_rank ? `#${data.game_rank.rank} of ${data.game_rank.of} on the server` : "No game activity",
+      },
+    ];
+    if (data.busiest_month) {
+      tiles.push({ label: "Busiest month", value: data.busiest_month.name, sub: formatDuration(data.busiest_month.seconds) });
+    }
+    if (data.top_voice_channel) {
+      tiles.push({ label: "Favorite channel", value: data.top_voice_channel.name, sub: formatDuration(data.top_voice_channel.seconds) });
+    }
+    const grid = el("div", { class: "wrapped-grid" });
+    tiles.forEach((t) => {
+      grid.appendChild(el("div", { class: "stat-tile" }, [
+        el("div", { class: "stat-label", text: t.label }),
+        el("div", { class: "stat-value", text: String(t.value) }),
+        el("div", { class: "stat-sub", text: t.sub }),
+      ]));
+    });
+    content.appendChild(grid);
+
+    if (data.top_voice_partner || data.top_game_partner) {
+      const partners = el("div", { class: "wrapped-partners" });
+      if (data.top_voice_partner) {
+        partners.appendChild(el("div", { class: "partner-card" }, [
+          el("div", { class: "partner-label", text: "Chatted with most" }),
+          el("div", { class: "partner-name", text: data.top_voice_partner.name }),
+          el("div", { class: "partner-time", text: `${formatDuration(data.top_voice_partner.seconds)} together in voice` }),
+        ]));
+      }
+      if (data.top_game_partner) {
+        const gamesLine = data.top_game_partner.top_games.map((g) => g.game).join(", ");
+        const card = el("div", { class: "partner-card game-partner" }, [
+          el("div", { class: "partner-label", text: "Played with most" }),
+          el("div", { class: "partner-name", text: data.top_game_partner.name }),
+          el("div", { class: "partner-time", text: `${formatDuration(data.top_game_partner.seconds)} playing together` }),
+        ]);
+        if (gamesLine) card.appendChild(el("div", { class: "partner-games", text: `Mostly: ${gamesLine}` }));
+        partners.appendChild(card);
+      }
+      content.appendChild(partners);
+    }
+
+    if (data.top_games.length) {
+      const maxSeconds = data.top_games[0].seconds || 1;
+      const barList = el("div", { class: "bar-list" });
+      data.top_games.forEach((g, i) => {
+        barList.appendChild(el("div", { class: "bar-row" }, [
+          el("span", { class: "bar-rank", text: String(i + 1) }),
+          el("span", { class: "bar-label", text: g.game }),
+          el("div", { class: "bar-track" }, [
+            el("div", { class: "bar-fill", style: `width:${Math.max(4, (g.seconds / maxSeconds) * 100)}%` }),
+          ]),
+          el("span", { class: "bar-value", text: formatDuration(g.seconds) }),
+        ]));
+      });
+      content.appendChild(el("div", { class: "panel" }, [
+        el("h2", { text: "Top games this year" }),
+        barList,
+      ]));
+    }
+
+    const longestLines = [];
+    if (data.longest_voice_session) {
+      const s = data.longest_voice_session;
+      longestLines.push(`Longest voice session: ${formatDuration(s.seconds)} in ${s.channel} on ${formatDate(s.date)}`);
+    }
+    if (data.longest_game_session) {
+      const s = data.longest_game_session;
+      longestLines.push(`Longest game session: ${formatDuration(s.seconds)} playing ${s.game} on ${formatDate(s.date)}`);
+    }
+    if (longestLines.length) {
+      const panel = el("div", { class: "panel" }, [el("h2", { text: "Longest sessions" })]);
+      longestLines.forEach((line) => panel.appendChild(el("div", { class: "stat-sub", text: line })));
+      content.appendChild(panel);
+    }
   }
 
   // ---------- boot ----------

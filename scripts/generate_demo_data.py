@@ -49,8 +49,18 @@ SOLO_GAMES = ["Elden Ring", "Balatro", "Hades II"]
 CLIQUES = {"A": CLIQUE_A, "B": CLIQUE_B, "C": CLIQUE_C}
 CLIQUE_WEIGHTS = [5, 4, 4]  # relative frequency of events per clique
 
+# More Discord time in the darker months, less over summer - gives the
+# "busiest month" wrapped stat something real to find instead of noise.
+MONTH_ACTIVITY = {
+    1: 1.3, 2: 1.2, 3: 1.0, 4: 0.9, 5: 0.8, 6: 0.7,
+    7: 0.6, 8: 0.7, 9: 0.9, 10: 1.1, 11: 1.2, 12: 1.4,
+}
+
 now = datetime.now(timezone.utc)
-start_of_range = now - timedelta(days=45)
+# Spans more than a year so the year picker and "your year" recap - which
+# need at least one full past calendar year - have real data to show.
+DAYS_OF_HISTORY = 420
+start_of_range = now - timedelta(days=DAYS_OF_HISTORY)
 
 voice_rows = []  # (guild_id, user_id, channel_id, start_time, end_time, duration)
 game_rows = []   # (guild_id, user_id, game, start_time, end_time, duration)
@@ -122,10 +132,16 @@ def simulate_solo_activity(day_offset: int) -> None:
         add_voice(user, "AFK", start, end)
 
 
-for day_offset in range(45):
-    for _ in range(random.randint(1, 3)):
+for day_offset in range(DAYS_OF_HISTORY):
+    day_date = start_of_range + timedelta(days=day_offset)
+    factor = MONTH_ACTIVITY.get(day_date.month, 1.0)
+
+    num_hangouts = sum(1 for _ in range(3) if random.random() < 0.5 * factor)
+    for _ in range(num_hangouts):
         simulate_hangout(day_offset)
-    for _ in range(random.randint(0, 2)):
+
+    num_solo = sum(1 for _ in range(2) if random.random() < 0.5 * factor)
+    for _ in range(num_solo):
         simulate_solo_activity(day_offset)
 
 

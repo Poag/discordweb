@@ -2,10 +2,12 @@
 
 A local dashboard for the data logged by the [`voicelog`](https://github.com/Poag/PogCogs/tree/main/voicelog)
 and [`gamelog`](https://github.com/Poag/PogCogs/tree/main/gamelog) Red-DiscordBot cogs: who's playing what,
-top10 leaderboards per game, voice channel activity, and — the main event — a force-directed
-relationship graph (in the spirit of Obsidian's graph view) showing who hangs out in voice
-together and who games together, built by joining each cog's session intervals on overlapping
-time windows, exactly as both cogs' own docstrings describe.
+top10 leaderboards per game, voice channel activity, a force-directed relationship graph (in the
+spirit of Obsidian's graph view) showing who hangs out in voice together and who games together,
+and a per-person "Your Year" recap (Spotify-Wrapped style) — top games, who they chatted/gamed
+with most, busiest month, longest session. The relationship graph and the wrapped partner stats
+are both built by joining each cog's session intervals on overlapping time windows, exactly as
+both cogs' own docstrings describe.
 
 ## How it's built
 
@@ -32,7 +34,7 @@ matters if you extend the API.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python scripts/generate_demo_data.py   # synthetic data, three overlapping friend groups
+.venv/bin/python scripts/generate_demo_data.py   # ~14 months of synthetic data, three overlapping friend groups
 .venv/bin/uvicorn backend.main:app --reload
 ```
 
@@ -83,6 +85,9 @@ All endpoints accept an optional `?guild_id=` (defaults to the only/first guild 
 | `GET /api/games` | every logged game, sorted by total time |
 | `GET /api/games/{game}/top10` | top 10 players of a specific game |
 | `GET /api/graph?min_seconds=` | relationship graph: nodes + edges (voice/game overlap seconds, plus per-channel/per-game breakdown for tooltips) |
+| `GET /api/users` | every known user (id + resolved name), for the "Your Year" picker |
+| `GET /api/years` | calendar years with any logged activity |
+| `GET /api/wrapped?user_id=&year=` | one person's year-in-review: totals, ranks, top games, top voice/game partner, busiest month, longest sessions. 404s if that person has no activity that year |
 
 ## Project layout
 

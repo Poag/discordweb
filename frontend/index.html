@@ -20,6 +20,7 @@
     <button class="tab-btn" data-tab="leaderboards">Leaderboards</button>
     <button class="tab-btn" data-tab="games">Games</button>
     <button class="tab-btn" data-tab="graph">Relationship Graph</button>
+    <button class="tab-btn" data-tab="wrapped">Your Year</button>
   </nav>
 
   <main>
@@ -87,6 +88,15 @@
         <div id="graph-tooltip" class="graph-tooltip" hidden></div>
         <div id="graph-empty" class="muted graph-empty" hidden>No relationships meet this threshold yet — lower it, or log more activity.</div>
       </div>
+    </section>
+
+    <section id="tab-wrapped" class="tab-panel">
+      <div class="wrapped-controls">
+        <select id="wrapped-user"><option value="">Select a person…</option></select>
+        <select id="wrapped-year"></select>
+      </div>
+      <div id="wrapped-content"></div>
+      <div id="wrapped-empty" class="muted wrapped-empty" hidden></div>
     </section>
   </main>
 

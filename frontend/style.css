@@ -295,3 +295,144 @@ tr.clickable:hover td { background: var(--surface-raised); }
 
 .loading-banner { background: var(--surface-raised); color: var(--text-secondary); }
 .error-banner { background: #3a1414; color: #f0a5a5; border: 1px solid #5a1f1f; max-width: 360px; }
+
+/* ---- Your Year ---- */
+
+.wrapped-controls {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.wrapped-controls select { min-width: 180px; }
+
+.wrapped-empty {
+  padding: 40px 0;
+  text-align: center;
+}
+
+.wrapped-hero {
+  border-radius: 14px;
+  padding: 28px 28px 24px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, rgba(57, 135, 229, 0.22), rgba(144, 133, 233, 0.22) 55%, rgba(217, 89, 38, 0.18));
+  border: 1px solid var(--border);
+}
+
+.wrapped-hero .wrapped-kicker {
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.wrapped-hero h2 {
+  margin: 4px 0 2px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.wrapped-hero .wrapped-hero-sub {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.wrapped-hero .wrapped-hero-figure {
+  font-size: 44px;
+  font-weight: 700;
+  margin-top: 14px;
+  font-variant-numeric: proportional-nums;
+}
+
+.wrapped-hero .wrapped-hero-figure .unit {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-left: 6px;
+}
+
+.wrapped-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.wrapped-partners {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+  .wrapped-partners { grid-template-columns: 1fr; }
+}
+
+.partner-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  border-left: 3px solid var(--series-voice);
+}
+
+.partner-card.game-partner { border-left-color: var(--series-game); }
+
+.partner-card .partner-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.partner-card .partner-name {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.partner-card .partner-time {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.partner-card .partner-games {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.bar-list { display: flex; flex-direction: column; gap: 10px; }
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 20px minmax(90px, 140px) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.bar-row .bar-rank { color: var(--text-muted); }
+.bar-row .bar-label { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.bar-track {
+  background: var(--gridline);
+  border-radius: 4px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--series-game);
+}
+
+.bar-row .bar-value {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

@@ -77,4 +77,25 @@ def api_graph(guild_id: Optional[int] = None, min_seconds: int = Query(60, ge=0)
     return {"guild_id": str(gid), **queries.get_graph(gid, min_seconds)}
 
 
+@app.get("/api/users")
+def api_users(guild_id: Optional[int] = None):
+    gid = _resolve_guild(guild_id)
+    return {"guild_id": str(gid), "users": queries.get_all_users(gid)}
+
+
+@app.get("/api/years")
+def api_years(guild_id: Optional[int] = None):
+    gid = _resolve_guild(guild_id)
+    return {"guild_id": str(gid), "years": queries.get_years(gid)}
+
+
+@app.get("/api/wrapped")
+def api_wrapped(user_id: int, year: int, guild_id: Optional[int] = None):
+    gid = _resolve_guild(guild_id)
+    wrapped = queries.get_wrapped(gid, user_id, year)
+    if wrapped is None:
+        raise HTTPException(404, f"No logged activity for that person in {year}.")
+    return {"guild_id": str(gid), **wrapped}
+
+
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
