@@ -197,12 +197,40 @@ tr.clickable:hover td { background: var(--surface-raised); }
 
 .games-list-panel table td, .games-list-panel table th { padding: 8px; }
 
-.games-list-panel .table-wrap {
+/* Shared by the Games list (left) and Top 10 (right) panels: caps each
+   to ~10 rows with its own scrollbar, so a long game/player list doesn't
+   push the panel (or the whole page) past the fold, and the two panels
+   stay the same height side by side. A real game/player name is
+   unbounded length (e.g. "FINAL FANTASY XIV ONLINE"), so it's truncated
+   with an ellipsis rather than wrapped - row height must stay
+   single-line for the 10-row max-height to mean what it says.
+
+   Deliberately NOT table-layout:fixed: fixed layout sizes columns from
+   the *first row* only, which here is the header (<th>, no width
+   classes) - the .num-cell width below would be silently ignored. This
+   stays in normal auto layout and uses the max-width:0 + width:100%
+   trick instead (the browser gives the unconstrained rank/num columns
+   their natural content width first, then this column gets whatever's
+   left, however wide that is on either panel - no fixed px guess). */
+.games-scroll-list {
   max-height: 352px; /* header + 10 data rows at this table's row height */
   overflow-y: auto;
 }
 
-.games-list-panel th {
+.games-scroll-list td.rank-cell,
+.games-scroll-list td.num-cell {
+  white-space: nowrap;
+}
+
+.games-scroll-list td:not(.rank-cell):not(.num-cell) {
+  max-width: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.games-scroll-list th {
   position: sticky;
   top: 0;
   background: var(--surface);
