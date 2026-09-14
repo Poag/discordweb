@@ -71,6 +71,36 @@ Open http://127.0.0.1:8000.
 this repo is meant to hold the code, not your server's data. See `config/*.example.json` for
 the mapping format.
 
+## Docker
+
+```bash
+docker build -f docker/Dockerfile -t discordweb .
+docker run -p 8000:8000 discordweb
+```
+
+The image bakes in the same synthetic demo data as the local quickstart (via
+`scripts/generate_demo_data.py`, run at build time), so it works immediately with no extra
+setup. `.github/workflows/docker-publish.yml` builds and pushes this image to
+`ghcr.io/poag/discordweb` on every push to `main` and on version tags.
+
+To run it against real data, bind-mount your files over the same in-container paths instead of
+rebuilding the image:
+
+```bash
+docker run -p 8000:8000 \
+  -v /path/to/voicelog.sqlite3:/app/data/voicelog.sqlite3:ro \
+  -v /path/to/gamelog.sqlite3:/app/data/gamelog.sqlite3:ro \
+  -v /path/to/users.json:/app/config/users.json:ro \
+  -v /path/to/channels.json:/app/config/channels.json:ro \
+  discordweb
+```
+
+(Generate `users.json`/`channels.json` locally first with `scripts/fetch_discord_names.py` —
+see "Pointing it at real data" above — then mount the result in.) The container runs as a
+non-root user (uid 1000), so a mounted file needs to be world-readable or owned by that uid;
+the default permissions Linux gives a normal file (`644`) already satisfy this. It exposes port
+`8000` and a `HEALTHCHECK` against `/api/guilds`.
+
 ## API
 
 All endpoints accept an optional `?guild_id=` (defaults to the only/first guild with data):
@@ -99,4 +129,6 @@ scripts/
   fetch_discord_names.py  Resolves real display names via the Discord API
 config/               users.json / channels.json (gitignored) + .example.json formats
 data/                 SQLite files live here by default (gitignored)
+docker/Dockerfile     Container build (see "Docker" above)
+.github/workflows/    docker-publish.yml - builds & pushes docker/Dockerfile to ghcr.io
 ```
