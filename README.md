@@ -101,6 +101,26 @@ non-root user (uid 1000), so a mounted file needs to be world-readable or owned 
 the default permissions Linux gives a normal file (`644`) already satisfy this. It exposes port
 `8000` and a `HEALTHCHECK` against `/api/guilds`.
 
+### Compose / Dockhand
+
+`compose.yaml` at the repo root deploys the same image with `docker compose up -d` (or
+`podman compose up -d`) — pulls `ghcr.io/poag/discordweb:latest` rather than building locally,
+which suits a mixed Docker/Podman, ARM+x86 fleet better than rebuilding per host. It's also a
+plain [Compose Specification](https://github.com/compose-spec/compose-spec) file, so it deploys
+as a [Dockhand](https://dockhand.pro/) git stack as-is: point a git stack at this repo with
+`compose_path: compose.yaml` (repo root, so no `context_dir` override is needed) and it'll
+build/redeploy on every push via Dockhand's webhook auto-sync.
+
+The real-data bind mounts are commented out in the file by default (same paths as the
+`docker run` example above) — uncomment and point them at your actual host paths before
+deploying for real; Docker/Podman silently creates an empty directory for a missing bind-mount
+source, which breaks the app rather than erroring clearly.
+
+If the image pull comes back unauthorized: GitHub Actions publishes GHCR packages **private by
+default**, even from a public repo. Either flip the `discordweb` package to public under its own
+Settings on GitHub, or configure registry credentials in Dockhand (or `docker login ghcr.io`)
+instead.
+
 ## API
 
 All endpoints accept an optional `?guild_id=` (defaults to the only/first guild with data):
@@ -130,5 +150,6 @@ scripts/
 config/               users.json / channels.json (gitignored) + .example.json formats
 data/                 SQLite files live here by default (gitignored)
 docker/Dockerfile     Container build (see "Docker" above)
+compose.yaml          Compose / Dockhand git-stack deployment, pulls the published image
 .github/workflows/    docker-publish.yml - builds & pushes docker/Dockerfile to ghcr.io
 ```
