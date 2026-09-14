@@ -124,6 +124,7 @@ All endpoints accept an optional `?guild_id=` (defaults to the only/first guild 
 | `GET /api/voice/channels` | per-channel voice time |
 | `GET /api/games` | every logged game, sorted by total time |
 | `GET /api/games/{game}/top10` | top 10 players of a specific game |
+| `GET /api/games/timeline?top_n=` | monthly game-time mix: the top N games (by all-time total, `top_n` default 7, max 8) as fixed series plus an "Other" catch-all, raw seconds per game per month - the frontend normalizes to a 100% stacked chart itself |
 | `GET /api/graph?min_seconds=` | relationship graph: nodes + edges (voice/game overlap seconds, plus per-channel/per-game breakdown for tooltips) |
 | `GET /api/users` | every known user (id + resolved name), for the "Your Year" picker |
 | `GET /api/years` | calendar years with any logged activity |

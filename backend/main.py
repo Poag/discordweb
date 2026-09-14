@@ -62,6 +62,12 @@ def api_games(guild_id: Optional[int] = None):
     return {"guild_id": str(gid), "games": queries.get_games_list(gid)}
 
 
+@app.get("/api/games/timeline")
+def api_games_timeline(guild_id: Optional[int] = None, top_n: int = Query(7, ge=1, le=8)):
+    gid = _resolve_guild(guild_id)
+    return {"guild_id": str(gid), **queries.get_game_timeline(gid, top_n)}
+
+
 @app.get("/api/games/{game}/top10")
 def api_game_top10(game: str, guild_id: Optional[int] = None):
     gid = _resolve_guild(guild_id)

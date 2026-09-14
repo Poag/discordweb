@@ -112,6 +112,7 @@
       btn.classList.add("active");
       document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
       if (btn.dataset.tab === "graph" && !state.graphData) loadGraph();
+      if (btn.dataset.tab === "games" && timelineData) renderTimeline();
       if (btn.dataset.tab === "wrapped" && !state.wrappedControlsLoaded) {
         state.wrappedControlsLoaded = true;
         initWrappedControls();
@@ -138,6 +139,7 @@
       loadOverview();
       loadLeaderboards();
       loadGames();
+      loadTimeline();
       if (document.getElementById("tab-graph").classList.contains("active")) loadGraph();
     });
   }
@@ -243,6 +245,148 @@
     el2.innerHTML = "";
     el2.appendChild(leaderboardTable(data.top10));
   }
+
+  // ---------- game popularity timeline ----------
+
+  const TIMELINE_COLORS = [
+    "var(--cat-1)", "var(--cat-2)", "var(--cat-3)", "var(--cat-4)",
+    "var(--cat-5)", "var(--cat-6)", "var(--cat-7)",
+  ];
+
+  function timelineColor(game, games) {
+    if (game === "Other") return "var(--cat-other)";
+    return TIMELINE_COLORS[games.indexOf(game) % TIMELINE_COLORS.length];
+  }
+
+  function parseMonth(ym) {
+    const [y, m] = ym.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, 1));
+  }
+
+  let timelineData = null;
+
+  async function loadTimeline() {
+    timelineData = await api("/api/games/timeline");
+    renderTimeline();
+  }
+
+  function renderTimeline() {
+    const wrap = document.querySelector(".timeline-wrap");
+    const empty = document.getElementById("timeline-empty");
+    const legend = document.getElementById("timeline-legend");
+    legend.innerHTML = "";
+
+    if (!timelineData || timelineData.months.length < 2) {
+      empty.hidden = false;
+      d3.select("#timeline-svg").selectAll("*").remove();
+      return;
+    }
+    empty.hidden = true;
+
+    const { games, months } = timelineData;
+    games.forEach((game) => {
+      legend.appendChild(el("div", { class: "legend-item" }, [
+        el("span", { class: "legend-swatch", style: `background:${timelineColor(game, games)}` }),
+        el("span", { text: game }),
+      ]));
+    });
+
+    const width = wrap.clientWidth;
+    const height = wrap.clientHeight;
+    const margin = { top: 12, right: 16, bottom: 24, left: 44 };
+    const dates = months.map((m) => parseMonth(m.month));
+
+    const svg = d3.select("#timeline-svg").attr("viewBox", [0, 0, width, height]);
+    svg.selectAll("*").remove();
+
+    const x = d3.scaleUtc().domain(d3.extent(dates)).range([margin.left, width - margin.right]);
+    const y = d3.scaleLinear().domain([0, 1]).range([height - margin.bottom, margin.top]);
+
+    const stacked = d3.stack().keys(games).offset(d3.stackOffsetExpand)(months);
+    const area = d3.area()
+      .x((d, i) => x(dates[i]))
+      .y0((d) => y(d[0]))
+      .y1((d) => y(d[1]))
+      .curve(d3.curveMonotoneX);
+
+    svg.append("g")
+      .selectAll("path")
+      .data(stacked)
+      .join("path")
+      .attr("fill", (d) => timelineColor(d.key, games))
+      .attr("stroke", "var(--surface)")
+      .attr("stroke-width", 2)
+      .attr("d", area);
+
+    const tickCount = Math.max(2, Math.min(months.length, Math.floor(width / 90)));
+    svg.append("g")
+      .attr("class", "timeline-axis")
+      .attr("transform", `translate(0,${height - margin.bottom})`)
+      .call(d3.axisBottom(x).ticks(tickCount).tickFormat(d3.utcFormat("%b %Y")).tickSizeOuter(0));
+
+    svg.append("g")
+      .attr("class", "timeline-axis")
+      .attr("transform", `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(4).tickFormat(d3.format(".0%")).tickSizeOuter(0))
+      .call((g) => g.select(".domain").remove());
+
+    const crosshair = svg.append("line")
+      .attr("class", "timeline-crosshair")
+      .attr("y1", margin.top)
+      .attr("y2", height - margin.bottom)
+      .style("opacity", 0);
+
+    const tooltip = document.getElementById("timeline-tooltip");
+
+    function showTooltip(idx, pointerX, pointerY) {
+      const month = months[idx];
+      const rows = games
+        .map((game) => ({ game, seconds: month[game] || 0 }))
+        .filter((r) => r.seconds > 0)
+        .sort((a, b) => b.seconds - a.seconds);
+
+      tooltip.innerHTML = "";
+      tooltip.appendChild(el("div", { class: "tt-title", text: month.label }));
+      tooltip.appendChild(el("div", { class: "tt-line", text: `Total: ${formatDuration(month.total_seconds)}` }));
+      rows.forEach((r) => {
+        const pct = Math.round((r.seconds / month.total_seconds) * 100);
+        tooltip.appendChild(el("div", { class: "tt-row" }, [
+          el("span", { class: "tt-key", style: `background:${timelineColor(r.game, games)}` }),
+          el("span", { class: "tt-value", text: `${pct}%` }),
+          el("span", { class: "tt-series", text: ` ${r.game} · ${formatDuration(r.seconds)}` }),
+        ]));
+      });
+      tooltip.hidden = false;
+      const rect = wrap.getBoundingClientRect();
+      tooltip.style.left = Math.min(pointerX + 14, rect.width - tooltip.offsetWidth - 8) + "px";
+      tooltip.style.top = Math.min(pointerY + 14, rect.height - tooltip.offsetHeight - 8) + "px";
+    }
+
+    svg.append("rect")
+      .attr("x", margin.left)
+      .attr("y", margin.top)
+      .attr("width", Math.max(0, width - margin.left - margin.right))
+      .attr("height", Math.max(0, height - margin.top - margin.bottom))
+      .attr("fill", "transparent")
+      .on("mousemove", (event) => {
+        const [px] = d3.pointer(event);
+        const t = x.invert(px);
+        let idx = d3.bisector((d) => d).left(dates, t);
+        idx = Math.max(0, Math.min(dates.length - 1, idx));
+        if (idx > 0 && Math.abs(dates[idx - 1] - t) < Math.abs(dates[idx] - t)) idx -= 1;
+        crosshair.attr("x1", x(dates[idx])).attr("x2", x(dates[idx])).style("opacity", 1);
+        const rect = wrap.getBoundingClientRect();
+        showTooltip(idx, event.clientX - rect.left, event.clientY - rect.top);
+      })
+      .on("mouseleave", () => {
+        crosshair.style("opacity", 0);
+        tooltip.hidden = true;
+      });
+  }
+
+  window.addEventListener("resize", () => {
+    if (document.getElementById("tab-games").classList.contains("active")) renderTimeline();
+  });
 
   // ---------- relationship graph ----------
 
@@ -703,6 +847,7 @@
       await loadOverview();
       await loadLeaderboards();
       await loadGames();
+      await loadTimeline();
     } catch (err) {
       // already surfaced via showError
       console.error(err);

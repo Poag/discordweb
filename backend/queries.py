@@ -439,3 +439,55 @@ def get_wrapped(guild_id: int, user_id: int, year: int) -> Optional[dict]:
             if busiest_month else None
         ),
     }
+
+
+def get_game_timeline(guild_id: int, top_n: int = 7) -> dict:
+    """Monthly game-time mix: each of the top N games (by all-time total)
+    as a fixed series, plus an "Other" catch-all for the rest - fixed so a
+    game's color/identity never shifts between months just because its
+    rank did. The frontend normalizes each month to 100% itself (a stacked
+    percentage area chart), so this returns raw seconds per game per month
+    rather than pre-computed shares.
+    """
+    with db.gamelog_conn() as conn:
+        top_games = [
+            row["game"]
+            for row in conn.execute(
+                "SELECT game, SUM(duration) AS total FROM sessions WHERE guild_id = ? "
+                "GROUP BY game ORDER BY total DESC LIMIT ?",
+                (guild_id, top_n),
+            )
+        ]
+        top_set = set(top_games)
+
+        rows = conn.execute(
+            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game, SUM(duration) AS total "
+            "FROM sessions WHERE guild_id = ? GROUP BY ym, game ORDER BY ym",
+            (guild_id,),
+        ).fetchall()
+
+    months: Dict[str, Dict[str, int]] = {}
+    has_other = False
+    for row in rows:
+        bucket = months.setdefault(row["ym"], {})
+        key = row["game"] if row["game"] in top_set else "Other"
+        if key == "Other":
+            has_other = True
+        bucket[key] = bucket.get(key, 0) + row["total"]
+
+    series = top_games + (["Other"] if has_other else [])
+
+    month_rows = []
+    for ym in sorted(months):
+        year, month = (int(part) for part in ym.split("-"))
+        bucket = months[ym]
+        entry = {
+            "month": ym,
+            "label": f"{MONTH_NAMES[month - 1][:3]} {year}",
+            "total_seconds": sum(bucket.values()),
+        }
+        for game in series:
+            entry[game] = bucket.get(game, 0)
+        month_rows.append(entry)
+
+    return {"games": series, "months": month_rows}
