@@ -4,10 +4,12 @@ A local dashboard for the data logged by the [`voicelog`](https://github.com/Poa
 and [`gamelog`](https://github.com/Poag/PogCogs/tree/main/gamelog) Red-DiscordBot cogs: who's playing what,
 top10 leaderboards per game, voice channel activity, a force-directed relationship graph (in the
 spirit of Obsidian's graph view) showing who hangs out in voice together and who games together,
-and a per-person "Your Year" recap (Spotify-Wrapped style) — top games, who they chatted/gamed
-with most, busiest month, longest session. The relationship graph and the wrapped partner stats
-are both built by joining each cog's session intervals on overlapping time windows, exactly as
-both cogs' own docstrings describe.
+a per-person "Your Year" recap (Spotify-Wrapped style) — top games, who they chatted/gamed
+with most, busiest month, longest session — and a game-popularity-over-time chart (guild-wide on
+the Games tab, one person's own mix on their Your Year page) showing the month-to-month shift in
+what's being played as a 100%-stacked area chart. The relationship graph and the wrapped partner
+stats are both built by joining each cog's session intervals on overlapping time windows, exactly
+as both cogs' own docstrings describe.
 
 ## How it's built
 
@@ -129,6 +131,7 @@ All endpoints accept an optional `?guild_id=` (defaults to the only/first guild 
 | `GET /api/users` | every known user (id + resolved name), for the "Your Year" picker |
 | `GET /api/years` | calendar years with any logged activity |
 | `GET /api/wrapped?user_id=&year=` | one person's year-in-review: totals, ranks, top games, top voice/game partner, busiest month, longest sessions. 404s if that person has no activity that year |
+| `GET /api/wrapped/timeline?user_id=&year=&top_n=` | the same monthly game-time mix as `/api/games/timeline`, scoped to one person's one year (`top_n` default 5, max 8) |
 
 ## Project layout
 

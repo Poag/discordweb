@@ -271,19 +271,33 @@
   }
 
   function renderTimeline() {
-    const wrap = document.querySelector(".timeline-wrap");
-    const empty = document.getElementById("timeline-empty");
-    const legend = document.getElementById("timeline-legend");
+    drawStackedAreaTimeline({
+      data: timelineData,
+      wrapId: "timeline-wrap",
+      svgId: "timeline-svg",
+      legendId: "timeline-legend",
+      tooltipId: "timeline-tooltip",
+      emptyId: "timeline-empty",
+    });
+  }
+
+  // Shared by the Games tab (guild-wide, all-time) and the Your Year tab
+  // (one person, one year) - same chart, different data scope, so the
+  // D3 drawing code lives once rather than twice.
+  function drawStackedAreaTimeline({ data, wrapId, svgId, legendId, tooltipId, emptyId }) {
+    const wrap = document.getElementById(wrapId);
+    const empty = emptyId ? document.getElementById(emptyId) : null;
+    const legend = document.getElementById(legendId);
     legend.innerHTML = "";
 
-    if (!timelineData || timelineData.months.length < 2) {
-      empty.hidden = false;
-      d3.select("#timeline-svg").selectAll("*").remove();
+    if (!data || data.months.length < 2) {
+      if (empty) empty.hidden = false;
+      d3.select(`#${svgId}`).selectAll("*").remove();
       return;
     }
-    empty.hidden = true;
+    if (empty) empty.hidden = true;
 
-    const { games, months } = timelineData;
+    const { games, months } = data;
     games.forEach((game) => {
       legend.appendChild(el("div", { class: "legend-item" }, [
         el("span", { class: "legend-swatch", style: `background:${timelineColor(game, games)}` }),
@@ -296,7 +310,7 @@
     const margin = { top: 12, right: 16, bottom: 24, left: 44 };
     const dates = months.map((m) => parseMonth(m.month));
 
-    const svg = d3.select("#timeline-svg").attr("viewBox", [0, 0, width, height]);
+    const svg = d3.select(`#${svgId}`).attr("viewBox", [0, 0, width, height]);
     svg.selectAll("*").remove();
 
     const x = d3.scaleUtc().domain(d3.extent(dates)).range([margin.left, width - margin.right]);
@@ -336,7 +350,7 @@
       .attr("y2", height - margin.bottom)
       .style("opacity", 0);
 
-    const tooltip = document.getElementById("timeline-tooltip");
+    const tooltip = document.getElementById(tooltipId);
 
     function showTooltip(idx, pointerX, pointerY) {
       const month = months[idx];
@@ -386,6 +400,7 @@
 
   window.addEventListener("resize", () => {
     if (document.getElementById("tab-games").classList.contains("active")) renderTimeline();
+    if (document.getElementById("tab-wrapped").classList.contains("active")) renderWrappedTimeline();
   });
 
   // ---------- relationship graph ----------
@@ -711,6 +726,11 @@
     url.searchParams.set("year", year);
     if (state.guildId) url.searchParams.set("guild_id", state.guildId);
 
+    const timelineUrl = new URL("/api/wrapped/timeline", window.location.origin);
+    timelineUrl.searchParams.set("user_id", userId);
+    timelineUrl.searchParams.set("year", year);
+    if (state.guildId) timelineUrl.searchParams.set("guild_id", state.guildId);
+
     showLoading(true);
     try {
       const res = await fetch(url);
@@ -724,7 +744,19 @@
         const body = await res.json().catch(() => ({}));
         throw new Error(body.detail || `${res.status} ${res.statusText}`);
       }
-      renderWrapped(await res.json());
+      const data = await res.json();
+
+      // Non-fatal: the recap still works without the timeline chart if
+      // this one call fails, so it doesn't share the try's error path.
+      let timeline = null;
+      try {
+        const tRes = await fetch(timelineUrl);
+        if (tRes.ok) timeline = await tRes.json();
+      } catch (e) {
+        console.error(e);
+      }
+
+      renderWrapped(data, timeline);
     } catch (err) {
       showError(err.message || String(err));
     } finally {
@@ -732,7 +764,20 @@
     }
   }
 
-  function renderWrapped(data) {
+  let wrappedTimelineData = null;
+
+  function renderWrappedTimeline() {
+    if (!document.getElementById("wrapped-timeline-wrap")) return;
+    drawStackedAreaTimeline({
+      data: wrappedTimelineData,
+      wrapId: "wrapped-timeline-wrap",
+      svgId: "wrapped-timeline-svg",
+      legendId: "wrapped-timeline-legend",
+      tooltipId: "wrapped-timeline-tooltip",
+    });
+  }
+
+  function renderWrapped(data, timelineData) {
     const content = document.getElementById("wrapped-content");
     content.innerHTML = "";
     document.getElementById("wrapped-empty").hidden = true;
@@ -819,6 +864,27 @@
         el("h2", { text: "Top games this year" }),
         barList,
       ]));
+    }
+
+    wrappedTimelineData = timelineData;
+    if (timelineData && timelineData.months.length >= 2) {
+      const wrapDiv = el("div", { class: "timeline-wrap", id: "wrapped-timeline-wrap" });
+      // svg needs the parser's HTML5 foreign-content handling to get the
+      // right namespace - document.createElement("svg") (what el() uses)
+      // produces an inert HTMLUnknownElement instead, so this one piece
+      // is built via a fixed, non-interpolated markup string rather than el().
+      wrapDiv.innerHTML =
+        '<svg id="wrapped-timeline-svg"></svg>' +
+        '<div id="wrapped-timeline-tooltip" class="graph-tooltip" hidden></div>';
+
+      content.appendChild(el("div", { class: "panel timeline-panel" }, [
+        el("div", { class: "timeline-header" }, [
+          el("h2", { text: "Game mix over the year" }),
+          el("div", { class: "timeline-legend", id: "wrapped-timeline-legend" }),
+        ]),
+        wrapDiv,
+      ]));
+      renderWrappedTimeline();
     }
 
     const longestLines = [];

@@ -441,39 +441,23 @@ def get_wrapped(guild_id: int, user_id: int, year: int) -> Optional[dict]:
     }
 
 
-def get_game_timeline(guild_id: int, top_n: int = 7) -> dict:
-    """Monthly game-time mix: each of the top N games (by all-time total)
-    as a fixed series, plus an "Other" catch-all for the rest - fixed so a
-    game's color/identity never shifts between months just because its
-    rank did. The frontend normalizes each month to 100% itself (a stacked
-    percentage area chart), so this returns raw seconds per game per month
-    rather than pre-computed shares.
+def _build_month_series(rows: List[Tuple[str, str, int]], top_games: List[str]) -> dict:
+    """Shapes (year_month, game, seconds) rows into the {games, months}
+    timeline format shared by the guild-wide and per-user endpoints,
+    folding anything outside top_games into "Other". top_games is fixed
+    by the caller (by all-time or by-year total, whichever fits the
+    scope) rather than recomputed per month, so a game's color/identity
+    never shifts between months just because its rank did.
     """
-    with db.gamelog_conn() as conn:
-        top_games = [
-            row["game"]
-            for row in conn.execute(
-                "SELECT game, SUM(duration) AS total FROM sessions WHERE guild_id = ? "
-                "GROUP BY game ORDER BY total DESC LIMIT ?",
-                (guild_id, top_n),
-            )
-        ]
-        top_set = set(top_games)
-
-        rows = conn.execute(
-            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game, SUM(duration) AS total "
-            "FROM sessions WHERE guild_id = ? GROUP BY ym, game ORDER BY ym",
-            (guild_id,),
-        ).fetchall()
-
+    top_set = set(top_games)
     months: Dict[str, Dict[str, int]] = {}
     has_other = False
-    for row in rows:
-        bucket = months.setdefault(row["ym"], {})
-        key = row["game"] if row["game"] in top_set else "Other"
+    for ym, game, total in rows:
+        bucket = months.setdefault(ym, {})
+        key = game if game in top_set else "Other"
         if key == "Other":
             has_other = True
-        bucket[key] = bucket.get(key, 0) + row["total"]
+        bucket[key] = bucket.get(key, 0) + total
 
     series = top_games + (["Other"] if has_other else [])
 
@@ -491,3 +475,52 @@ def get_game_timeline(guild_id: int, top_n: int = 7) -> dict:
         month_rows.append(entry)
 
     return {"games": series, "months": month_rows}
+
+
+def get_game_timeline(guild_id: int, top_n: int = 7) -> dict:
+    """Monthly game-time mix across the whole guild's history. The
+    frontend normalizes each month to 100% itself (a stacked percentage
+    area chart), so this returns raw seconds per game per month rather
+    than pre-computed shares.
+    """
+    with db.gamelog_conn() as conn:
+        top_games = [
+            row["game"]
+            for row in conn.execute(
+                "SELECT game, SUM(duration) AS total FROM sessions WHERE guild_id = ? "
+                "GROUP BY game ORDER BY total DESC LIMIT ?",
+                (guild_id, top_n),
+            )
+        ]
+        rows = conn.execute(
+            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game, SUM(duration) AS total "
+            "FROM sessions WHERE guild_id = ? GROUP BY ym, game ORDER BY ym",
+            (guild_id,),
+        ).fetchall()
+
+    return _build_month_series([(r["ym"], r["game"], r["total"]) for r in rows], top_games)
+
+
+def get_user_game_timeline(guild_id: int, user_id: int, year: int, top_n: int = 5) -> dict:
+    """Same shape as get_game_timeline, scoped to one person's one year -
+    the "Your Year" version of the same ebb-and-flow chart.
+    """
+    ys, ye = _year_bounds(year)
+    with db.gamelog_conn() as conn:
+        top_games = [
+            row["game"]
+            for row in conn.execute(
+                "SELECT game, SUM(duration) AS total FROM sessions "
+                "WHERE guild_id = ? AND user_id = ? AND start_time >= ? AND start_time < ? "
+                "GROUP BY game ORDER BY total DESC LIMIT ?",
+                (guild_id, user_id, ys, ye, top_n),
+            )
+        ]
+        rows = conn.execute(
+            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game, SUM(duration) AS total "
+            "FROM sessions WHERE guild_id = ? AND user_id = ? AND start_time >= ? AND start_time < ? "
+            "GROUP BY ym, game ORDER BY ym",
+            (guild_id, user_id, ys, ye),
+        ).fetchall()
+
+    return _build_month_series([(r["ym"], r["game"], r["total"]) for r in rows], top_games)

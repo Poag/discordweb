@@ -104,4 +104,12 @@ def api_wrapped(user_id: int, year: int, guild_id: Optional[int] = None):
     return {"guild_id": str(gid), **wrapped}
 
 
+@app.get("/api/wrapped/timeline")
+def api_wrapped_timeline(
+    user_id: int, year: int, guild_id: Optional[int] = None, top_n: int = Query(5, ge=1, le=8)
+):
+    gid = _resolve_guild(guild_id)
+    return {"guild_id": str(gid), **queries.get_user_game_timeline(gid, user_id, year, top_n)}
+
+
 app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
