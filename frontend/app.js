@@ -125,12 +125,12 @@
     const data = await api("/api/guilds");
     const select = document.getElementById("guild-select");
     if (data.guilds.length <= 1) {
-      state.guildId = data.guilds[0] || null;
+      state.guildId = data.guilds[0] ? data.guilds[0].id : null;
       return;
     }
     select.hidden = false;
-    data.guilds.forEach((g) => select.appendChild(el("option", { value: g, text: g })));
-    state.guildId = data.guilds[0];
+    data.guilds.forEach((g) => select.appendChild(el("option", { value: g.id, text: g.name })));
+    state.guildId = data.guilds[0].id;
     select.value = state.guildId;
     select.addEventListener("change", () => {
       state.guildId = select.value;

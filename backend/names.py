@@ -1,12 +1,13 @@
-"""Resolve Discord user/channel snowflake IDs to display names.
+"""Resolve Discord user/channel/guild snowflake IDs to display names.
 
 voicelog and gamelog each cache their own id -> display name mappings
-directly in their SQLite databases (voicelog's ``user_names`` and
-``channel_names``, gamelog's ``user_names``), refreshed automatically as
-members are seen - see PogCogs' README "Relationship data" section. This
-reads straight from those tables rather than a separate export step, so
-names stay current without a manual re-run. Where both cogs have a row
-for the same user, whichever was updated more recently wins.
+directly in their SQLite databases (voicelog's ``user_names``,
+``channel_names``, and ``guild_names``; gamelog's own ``user_names`` and
+``guild_names``), refreshed automatically as members are seen - see
+PogCogs' README "Relationship data" section. This reads straight from
+those tables rather than a separate export step, so names stay current
+without a manual re-run. Where both cogs have a row for the same
+user/guild, whichever was updated more recently wins.
 
 Cached in memory with a short TTL rather than re-querying per lookup,
 since a single API response typically resolves many IDs in a row.
@@ -28,6 +29,7 @@ class NameResolver:
     def __init__(self) -> None:
         self._users: Dict[int, str] = {}
         self._channels: Dict[int, str] = {}
+        self._guilds: Dict[int, str] = {}
         self._loaded_at = 0.0
 
     def _ensure_fresh(self) -> None:
@@ -38,6 +40,7 @@ class NameResolver:
     def _reload(self) -> None:
         users: Dict[int, Tuple[str, int]] = {}
         channels: Dict[int, str] = {}
+        guilds: Dict[int, Tuple[str, int]] = {}
 
         try:
             with db.voicelog_conn() as conn:
@@ -49,6 +52,10 @@ class NameResolver:
                     "SELECT channel_id, name FROM channel_names"
                 ):
                     channels[channel_id] = name
+                for guild_id, name, updated_at in conn.execute(
+                    "SELECT guild_id, name, updated_at FROM guild_names"
+                ):
+                    guilds[guild_id] = (name, updated_at)
         except (FileNotFoundError, sqlite3.OperationalError):
             pass  # missing file, or an older cog build predating these tables
 
@@ -59,11 +66,17 @@ class NameResolver:
                 ):
                     if user_id not in users or updated_at >= users[user_id][1]:
                         users[user_id] = (name, updated_at)
+                for guild_id, name, updated_at in conn.execute(
+                    "SELECT guild_id, name, updated_at FROM guild_names"
+                ):
+                    if guild_id not in guilds or updated_at >= guilds[guild_id][1]:
+                        guilds[guild_id] = (name, updated_at)
         except (FileNotFoundError, sqlite3.OperationalError):
             pass
 
         self._users = {user_id: name for user_id, (name, _) in users.items()}
         self._channels = channels
+        self._guilds = {guild_id: name for guild_id, (name, _) in guilds.items()}
         self._loaded_at = time.monotonic()
 
     def user(self, user_id: int) -> str:
@@ -73,6 +86,10 @@ class NameResolver:
     def channel(self, channel_id: int) -> str:
         self._ensure_fresh()
         return self._channels.get(channel_id, f"channel-{channel_id % 10000:04d}")
+
+    def guild(self, guild_id: int) -> str:
+        self._ensure_fresh()
+        return self._guilds.get(guild_id, f"Server {guild_id % 10000:04d}")
 
 
 resolver = NameResolver()

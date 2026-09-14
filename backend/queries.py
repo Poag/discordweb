@@ -25,6 +25,10 @@ def get_guilds() -> List[int]:
     return sorted(guilds)
 
 
+def get_guilds_with_names() -> List[dict]:
+    return [{"id": str(gid), "name": resolver.guild(gid)} for gid in get_guilds()]
+
+
 def get_overview(guild_id: int) -> dict:
     with db.voicelog_conn() as conn:
         voice_total, voice_users, voice_min, voice_max = conn.execute(

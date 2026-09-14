@@ -29,7 +29,7 @@ def _resolve_guild(guild_id: Optional[int]) -> int:
 
 @app.get("/api/guilds")
 def api_guilds():
-    return {"guilds": [str(g) for g in queries.get_guilds()]}
+    return {"guilds": queries.get_guilds_with_names()}
 
 
 @app.get("/api/overview")

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 
 GUILD_ID = 111111111111111111
+GUILD_NAME = "The Friend Server"
 
 USERS = [
     "Nova", "Kestrel", "Bramble", "Flick", "Juniper", "Pixel",
@@ -189,6 +190,15 @@ def write_voicelog_db() -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS guild_names (
+            guild_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        """
+    )
     seen_at = int(now.timestamp())
     conn.executemany(
         "INSERT INTO user_names (guild_id, user_id, name, updated_at) VALUES (?, ?, ?, ?)",
@@ -197,6 +207,10 @@ def write_voicelog_db() -> None:
     conn.executemany(
         "INSERT INTO channel_names (guild_id, channel_id, name, updated_at) VALUES (?, ?, ?, ?)",
         [(GUILD_ID, cid, name, seen_at) for name, cid in CHANNEL_IDS.items()],
+    )
+    conn.execute(
+        "INSERT INTO guild_names (guild_id, name, updated_at) VALUES (?, ?, ?)",
+        (GUILD_ID, GUILD_NAME, seen_at),
     )
     conn.commit()
     conn.close()
@@ -236,10 +250,23 @@ def write_gamelog_db() -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS guild_names (
+            guild_id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        """
+    )
     seen_at = int(now.timestamp())
     conn.executemany(
         "INSERT INTO user_names (guild_id, user_id, name, updated_at) VALUES (?, ?, ?, ?)",
         [(GUILD_ID, uid, name, seen_at) for name, uid in USER_IDS.items()],
+    )
+    conn.execute(
+        "INSERT INTO guild_names (guild_id, name, updated_at) VALUES (?, ?, ?)",
+        (GUILD_ID, GUILD_NAME, seen_at),
     )
     conn.commit()
     conn.close()

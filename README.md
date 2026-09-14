@@ -117,7 +117,7 @@ All endpoints accept an optional `?guild_id=` (defaults to the only/first guild 
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/guilds` | guild IDs with any logged data |
+| `GET /api/guilds` | every guild with logged data, as `{id, name}` |
 | `GET /api/overview` | headline stats |
 | `GET /api/leaderboard` | top players by total game time |
 | `GET /api/voice/leaderboard` | top users by total voice time |
