@@ -4,9 +4,7 @@ __pycache__/
 *.pyc
 node_modules/
 
-# Real bot data and resolved Discord names never belong in an image layer.
+# Real bot data (including cached display names, in the same files) never belongs in an image layer.
 data/*.sqlite3
-config/users.json
-config/channels.json
 
 README.md

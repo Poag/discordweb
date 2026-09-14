@@ -21,9 +21,11 @@ both cogs' own docstrings describe.
 - **Frontend** (`frontend/`): a single static page (no build step) using D3 (vendored locally
   in `frontend/vendor/` — no CDN dependency, works fully offline) for the force-directed graph,
   plus plain HTML/CSS for the leaderboard and stats views.
-- **Name resolution** (`backend/names.py`): the two cogs only ever log raw Discord snowflake
-  IDs, so display names come from `config/users.json` / `config/channels.json`, either filled
-  in by the demo generator or fetched for real via `scripts/fetch_discord_names.py`.
+- **Name resolution** (`backend/names.py`): both cogs cache a live id → display name mapping
+  directly in their own SQLite databases (`user_names`, and `channel_names` in voicelog's),
+  refreshed automatically as members are seen - see PogCogs' README "Relationship data" section.
+  This reads straight from those tables (merged, most-recently-seen wins), cached in memory for
+  30 seconds at a time, so names stay current with zero setup and no separate export step.
 
 Discord snowflake IDs are 64-bit and exceed JavaScript's safe integer range (2^53), so every
 ID that crosses the API boundary is serialized as a **string**, never a JSON number — this
@@ -42,34 +44,26 @@ Open http://127.0.0.1:8000.
 
 ## Pointing it at real data
 
-1. Copy your bot's `voicelog.sqlite3` and `gamelog.sqlite3` (from each cog's data folder under
-   Red's `cog_data_path`) somewhere this machine can read, or set the paths directly:
+Copy your bot's `voicelog.sqlite3` and `gamelog.sqlite3` (from each cog's data folder under
+Red's `cog_data_path`) somewhere this machine can read, or set the paths directly:
 
-   ```bash
-   export VOICELOG_DB=/path/to/voicelog.sqlite3
-   export GAMELOG_DB=/path/to/gamelog.sqlite3
-   ```
+```bash
+export VOICELOG_DB=/path/to/voicelog.sqlite3
+export GAMELOG_DB=/path/to/gamelog.sqlite3
+```
 
-   By default they're read from `data/voicelog.sqlite3` and `data/gamelog.sqlite3`.
+By default they're read from `data/voicelog.sqlite3` and `data/gamelog.sqlite3`. That's it -
+display names come from the same files (see "Name resolution" above), so there's no separate
+step. If your bot is running an older PogCogs build from before it cached names itself, unmapped
+users show up as `User 1234` placeholders until they're next seen (join/leave/move voice, or
+start/stop a game) on the current version - the dashboard still works either way, just with
+less readable labels until then.
 
-2. Resolve real display names (needs the same bot token, with the Server Members privileged
-   intent enabled — the same requirement `gamelog` itself has):
+Restart the server after pointing it at new files. If your bot logs multiple guilds, a guild
+selector appears automatically in the top bar.
 
-   ```bash
-   DISCORD_BOT_TOKEN=... .venv/bin/python scripts/fetch_discord_names.py --guild-id <your guild id>
-   ```
-
-   This writes `config/users.json` and `config/channels.json`. Re-run it any time to pick up
-   new members; it merges rather than replaces, so manual edits survive. Without this step,
-   unmapped users show up as `User 1234` placeholders — the dashboard still works, just with
-   less readable labels.
-
-3. Restart the server. If your bot logs multiple guilds, a guild selector appears automatically
-   in the top bar.
-
-`config/users.json`, `config/channels.json`, and any real `*.sqlite3` files are gitignored —
-this repo is meant to hold the code, not your server's data. See `config/*.example.json` for
-the mapping format.
+Any real `*.sqlite3` files placed under `data/` are gitignored - this repo is meant to hold the
+code, not your server's data.
 
 ## Docker
 
@@ -90,16 +84,12 @@ rebuilding the image:
 docker run -p 8000:8000 \
   -v /path/to/voicelog.sqlite3:/app/data/voicelog.sqlite3:ro \
   -v /path/to/gamelog.sqlite3:/app/data/gamelog.sqlite3:ro \
-  -v /path/to/users.json:/app/config/users.json:ro \
-  -v /path/to/channels.json:/app/config/channels.json:ro \
   discordweb
 ```
 
-(Generate `users.json`/`channels.json` locally first with `scripts/fetch_discord_names.py` —
-see "Pointing it at real data" above — then mount the result in.) The container runs as a
-non-root user (uid 1000), so a mounted file needs to be world-readable or owned by that uid;
-the default permissions Linux gives a normal file (`644`) already satisfy this. It exposes port
-`8000` and a `HEALTHCHECK` against `/api/guilds`.
+The container runs as a non-root user (uid 1000), so a mounted file needs to be world-readable
+or owned by that uid; the default permissions Linux gives a normal file (`644`) already satisfy
+this. It exposes port `8000` and a `HEALTHCHECK` against `/api/guilds`.
 
 ### Compose / Dockhand
 
@@ -145,9 +135,7 @@ All endpoints accept an optional `?guild_id=` (defaults to the only/first guild 
 backend/            FastAPI app, SQLite access, overlap/co-occurrence math, name resolution
 frontend/            Static dashboard (index.html, style.css, app.js) + vendored D3
 scripts/
-  generate_demo_data.py   Synthetic voicelog.sqlite3 / gamelog.sqlite3 + name mappings
-  fetch_discord_names.py  Resolves real display names via the Discord API
-config/               users.json / channels.json (gitignored) + .example.json formats
+  generate_demo_data.py   Synthetic voicelog.sqlite3 / gamelog.sqlite3, incl. name tables
 data/                 SQLite files live here by default (gitignored)
 docker/Dockerfile     Container build (see "Docker" above)
 compose.yaml          Compose / Dockhand git-stack deployment, pulls the published image

@@ -10,12 +10,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ backend/
 COPY frontend/ frontend/
 COPY scripts/ scripts/
-COPY config/*.example.json config/
 
 # Bake in synthetic demo data at build time (same generator as local dev)
 # so the image runs out of the box. Point VOICELOG_DB/GAMELOG_DB at a
 # mounted volume, or bind-mount real files over these same paths, to use
-# real data instead - see README "Docker" section.
+# real data instead - see README "Docker" section. Display names live in
+# those same databases (voicelog/gamelog cache them automatically as
+# members are seen), so no separate name-mapping file/volume is needed.
 RUN python scripts/generate_demo_data.py
 
 RUN useradd --create-home --uid 1000 appuser \
@@ -25,9 +26,7 @@ USER appuser
 ENV HOST=0.0.0.0 \
     PORT=8000 \
     VOICELOG_DB=/app/data/voicelog.sqlite3 \
-    GAMELOG_DB=/app/data/gamelog.sqlite3 \
-    USERS_FILE=/app/config/users.json \
-    CHANNELS_FILE=/app/config/channels.json
+    GAMELOG_DB=/app/data/gamelog.sqlite3
 
 EXPOSE 8000
 

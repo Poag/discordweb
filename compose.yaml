@@ -23,9 +23,9 @@ services:
     # see the `cogs` repo) to replace the image's baked-in demo data. Each
     # host path must already exist before the container starts: Docker
     # silently creates an empty *directory* at a missing bind-mount source,
-    # which then breaks the app since it expects a file there.
+    # which then breaks the app since it expects a file there. Display
+    # names live in these same two files (both cogs cache them
+    # automatically), so no separate name-mapping file/volume is needed.
     # volumes:
     #   - /path/to/voicelog.sqlite3:/app/data/voicelog.sqlite3:ro
     #   - /path/to/gamelog.sqlite3:/app/data/gamelog.sqlite3:ro
-    #   - /path/to/users.json:/app/config/users.json:ro
-    #   - /path/to/channels.json:/app/config/channels.json:ro

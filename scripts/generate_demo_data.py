@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate synthetic voicelog.sqlite3 / gamelog.sqlite3 files matching the
 voicelog and gamelog cog schemas, so the dashboard can be exercised without
-real Discord data. Also writes config/users.json and config/channels.json
-name mappings for the generated IDs.
+real Discord data. Also populates both cogs' user_names/channel_names
+tables for the generated IDs, matching how the real cogs cache display
+names as they go - see backend/names.py.
 
 Data is shaped around a few overlapping friend "cliques" plus one bridge
 user, so the relationship graph has visible, meaningful structure instead
@@ -10,7 +11,6 @@ of random noise.
 
 Usage: python scripts/generate_demo_data.py
 """
-import json
 import random
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -20,7 +20,6 @@ random.seed(42)
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
-CONFIG_DIR = ROOT / "config"
 
 GUILD_ID = 111111111111111111
 
@@ -168,6 +167,37 @@ def write_voicelog_db() -> None:
         "VALUES (?, ?, ?, ?, ?, ?)",
         voice_rows,
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_names (
+            guild_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (guild_id, user_id)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS channel_names (
+            guild_id INTEGER NOT NULL,
+            channel_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (guild_id, channel_id)
+        )
+        """
+    )
+    seen_at = int(now.timestamp())
+    conn.executemany(
+        "INSERT INTO user_names (guild_id, user_id, name, updated_at) VALUES (?, ?, ?, ?)",
+        [(GUILD_ID, uid, name, seen_at) for name, uid in USER_IDS.items()],
+    )
+    conn.executemany(
+        "INSERT INTO channel_names (guild_id, channel_id, name, updated_at) VALUES (?, ?, ?, ?)",
+        [(GUILD_ID, cid, name, seen_at) for name, cid in CHANNEL_IDS.items()],
+    )
     conn.commit()
     conn.close()
     print(f"Wrote {len(voice_rows)} voice sessions to {path}")
@@ -195,21 +225,27 @@ def write_gamelog_db() -> None:
         "INSERT INTO sessions (guild_id, user_id, game, start_time, end_time, duration) VALUES (?, ?, ?, ?, ?, ?)",
         game_rows,
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_names (
+            guild_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (guild_id, user_id)
+        )
+        """
+    )
+    seen_at = int(now.timestamp())
+    conn.executemany(
+        "INSERT INTO user_names (guild_id, user_id, name, updated_at) VALUES (?, ?, ?, ?)",
+        [(GUILD_ID, uid, name, seen_at) for name, uid in USER_IDS.items()],
+    )
     conn.commit()
     conn.close()
     print(f"Wrote {len(game_rows)} game sessions to {path}")
 
 
-def write_name_maps() -> None:
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    users_map = {str(uid): name for name, uid in USER_IDS.items()}
-    channels_map = {str(cid): name for name, cid in CHANNEL_IDS.items()}
-    (CONFIG_DIR / "users.json").write_text(json.dumps(users_map, indent=2))
-    (CONFIG_DIR / "channels.json").write_text(json.dumps(channels_map, indent=2))
-    print(f"Wrote {CONFIG_DIR / 'users.json'} and {CONFIG_DIR / 'channels.json'}")
-
-
 if __name__ == "__main__":
     write_voicelog_db()
     write_gamelog_db()
-    write_name_maps()
