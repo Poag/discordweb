@@ -196,6 +196,18 @@ tr.clickable:hover td { background: var(--surface-raised); }
 .num-cell { text-align: right; color: var(--text-secondary); }
 
 .games-list-panel table td, .games-list-panel table th { padding: 8px; }
+
+.games-list-panel .table-wrap {
+  max-height: 352px; /* header + 10 data rows at this table's row height */
+  overflow-y: auto;
+}
+
+.games-list-panel th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
 .game-row.selected td { background: var(--surface-raised); color: var(--text-primary); }
 
 .graph-controls {
