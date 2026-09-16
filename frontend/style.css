@@ -66,6 +66,52 @@ body {
 
 .muted { color: var(--text-muted); }
 
+.user-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.logout-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+
+.logout-link:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+.login-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 24px;
+}
+
+.login-card {
+  text-align: center;
+  max-width: 320px;
+}
+
+.login-card h2 { margin: 0 0 8px; }
+.login-card p { margin: 0 0 20px; }
+
+.discord-login-btn {
+  display: inline-block;
+  background: #5865f2;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+}
+
+.discord-login-btn:hover { background: #4752c4; }
+
 .guild-select, select, input[type="search"] {
   background: var(--surface);
   color: var(--text-primary);

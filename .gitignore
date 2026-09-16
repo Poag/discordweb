@@ -6,3 +6,6 @@ __pycache__/
 /data/*.sqlite3
 
 node_modules/
+
+# Discord OAuth client secret / session signing key - see README "Authentication".
+.env

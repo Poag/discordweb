@@ -29,3 +29,16 @@ services:
     # volumes:
     #   - /path/to/voicelog.sqlite3:/app/data/voicelog.sqlite3:ro
     #   - /path/to/gamelog.sqlite3:/app/data/gamelog.sqlite3:ro
+
+    # Discord OAuth2 login (README "Authentication"). Leave all four unset
+    # to keep the dashboard open with no login, same as before this existed.
+    # Set all four together to require login and restrict each viewer to
+    # the guilds they're actually a member of. Put real values in a `.env`
+    # file next to this one (git-ignored) rather than editing them in here -
+    # `docker compose`/Dockhand both load `.env` from the compose file's
+    # directory automatically.
+    # environment:
+    #   DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+    #   DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+    #   DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
+    #   SESSION_SECRET: ${SESSION_SECRET}

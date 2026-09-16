@@ -113,13 +113,44 @@ default**, even from a public repo. Either flip the `discordweb` package to publ
 Settings on GitHub, or configure registry credentials in Dockhand (or `docker login ghcr.io`)
 instead.
 
+## Authentication
+
+Optional, off by default - with no `DISCORD_*` env vars set, the dashboard is open to anyone who
+can reach it, showing every guild the bot logs, exactly as before this existed.
+
+Set all four of these to require Discord login and restrict each viewer to the guilds they're
+actually a member of (the intersection of "guilds the bot logs" and "guilds this Discord account
+is currently in" - not a separate access list to maintain by hand):
+
+```bash
+export DISCORD_CLIENT_ID=...        # OAuth2 > General > Client ID, in the Discord dev portal
+export DISCORD_CLIENT_SECRET=...    # same page > Client Secret
+export DISCORD_REDIRECT_URI=https://your-dashboard-host/auth/callback
+export SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+```
+
+You can reuse the bot's own Discord application (bot applications already have an OAuth2 page) -
+no new app needed. In that application's **OAuth2 > General > Redirects**, add the exact URL you
+set as `DISCORD_REDIRECT_URI` (same scheme/host/port, no trailing slash - Discord checks it
+byte-for-byte). No bot permissions or extra scopes need to change; login only ever requests
+`identify guilds` (who you are, and which servers you're in), never anything the bot itself uses.
+
+A login lasts 7 days (then you're prompted to log in again), and takes a snapshot of your guild
+membership at login time - joining a server won't unlock it here until you log in again. Sessions
+are a signed cookie, not a server-side store, so there's nothing to clean up or lose on restart;
+the cookie holds only your Discord id/name/avatar and guild id list, the same things visible on
+your public Discord profile - never your OAuth token or anything secret.
+
 ## API
 
-All endpoints accept an optional `?guild_id=` (defaults to the only/first guild with data):
+All endpoints accept an optional `?guild_id=` (defaults to the only/first guild you have access
+to). When [authentication](#authentication) is enabled, every endpoint below 401s if you're not
+logged in, and 404s a `guild_id` you're logged in but not a member of.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/guilds` | every guild with logged data, as `{id, name}` |
+| `GET /api/me` | login status: `{auth_enabled}` when auth is off, else `{auth_enabled, authenticated, user?}` |
+| `GET /api/guilds` | every guild you have access to, as `{id, name}` |
 | `GET /api/overview` | headline stats |
 | `GET /api/leaderboard` | top players by total game time |
 | `GET /api/voice/leaderboard` | top users by total voice time |
@@ -137,6 +168,7 @@ All endpoints accept an optional `?guild_id=` (defaults to the only/first guild 
 
 ```
 backend/            FastAPI app, SQLite access, overlap/co-occurrence math, name resolution
+  auth.py           Discord OAuth2 login (see "Authentication" above)
 frontend/            Static dashboard (index.html, style.css, app.js) + vendored D3
 scripts/
   generate_demo_data.py   Synthetic voicelog.sqlite3 / gamelog.sqlite3, incl. name tables

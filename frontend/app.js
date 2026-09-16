@@ -903,9 +903,42 @@
     }
   }
 
+  // ---------- auth ----------
+
+  async function checkAuth() {
+    try {
+      const res = await fetch("/api/me");
+      if (!res.ok) return { auth_enabled: false };
+      return await res.json();
+    } catch (err) {
+      // Network hiccup on this one preflight call shouldn't brick a
+      // deployment with auth off - fall through to the normal boot path,
+      // where a real outage will surface via the existing error banner.
+      return { auth_enabled: false };
+    }
+  }
+
+  function showLoginGate() {
+    document.getElementById("tabs").hidden = true;
+    document.querySelector("main").hidden = true;
+    document.getElementById("login-gate").hidden = false;
+  }
+
+  function showUserBadge(user) {
+    document.getElementById("user-badge-name").textContent = user.name;
+    document.getElementById("user-badge").hidden = false;
+  }
+
   // ---------- boot ----------
 
   async function main() {
+    const me = await checkAuth();
+    if (me.auth_enabled && !me.authenticated) {
+      showLoginGate();
+      return;
+    }
+    if (me.auth_enabled) showUserBadge(me.user);
+
     initTabs();
     initGraphControls();
     try {

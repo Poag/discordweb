@@ -12,8 +12,20 @@
     <div class="topbar-meta">
       <span id="guild-range" class="muted"></span>
       <select id="guild-select" class="guild-select" hidden></select>
+      <div id="user-badge" class="user-badge" hidden>
+        <span id="user-badge-name"></span>
+        <a href="/auth/logout" class="logout-link">Log out</a>
+      </div>
     </div>
   </header>
+
+  <div id="login-gate" class="login-gate" hidden>
+    <div class="login-card">
+      <h2>Sign in to continue</h2>
+      <p class="muted">Log in with Discord to see the servers you're a member of.</p>
+      <a href="/auth/login" class="discord-login-btn">Login with Discord</a>
+    </div>
+  </div>
 
   <nav class="tabs" id="tabs">
     <button class="tab-btn active" data-tab="overview">Overview</button>
