@@ -7,9 +7,16 @@
     graphMode: "combined",
     graphThreshold: 300,
     graphSearch: "",
+    graphGame: null, // a specific game name to scope the "Games" mode to, or null for all games
     selectedGame: null,
     wrappedControlsLoaded: false,
   };
+
+  // The game filter only applies in "games" mode - switching away from it
+  // (without touching the dropdown) shows the full all-games view again.
+  function currentGraphGameFilter() {
+    return state.graphMode === "games" ? state.graphGame : null;
+  }
 
   // ---------- small helpers ----------
 
@@ -111,7 +118,10 @@
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
       document.getElementById(`tab-${btn.dataset.tab}`).classList.add("active");
-      if (btn.dataset.tab === "graph" && !state.graphData) loadGraph();
+      if (btn.dataset.tab === "graph" && !state.graphData) {
+        loadGraphGameOptions();
+        loadGraph();
+      }
       if (btn.dataset.tab === "games" && timelineData) renderTimeline();
       if (btn.dataset.tab === "wrapped" && !state.wrappedControlsLoaded) {
         state.wrappedControlsLoaded = true;
@@ -136,11 +146,15 @@
     select.addEventListener("change", () => {
       state.guildId = select.value;
       state.graphData = null;
+      state.graphGame = null; // a game selected in the old guild may not exist in the new one
       loadOverview();
       loadLeaderboards();
       loadGames();
       loadTimeline();
-      if (document.getElementById("tab-graph").classList.contains("active")) loadGraph();
+      if (document.getElementById("tab-graph").classList.contains("active")) {
+        loadGraphGameOptions();
+        loadGraph();
+      }
     });
   }
 
@@ -438,10 +452,13 @@
   function updateLegend() {
     const legend = document.getElementById("graph-legend");
     legend.innerHTML = "";
+    const gamesLabel = state.graphMode === "games" && state.graphGame
+      ? `${state.graphGame} together`
+      : "Games together";
     const items = state.graphMode === "voice"
       ? [["Voice together", "var(--series-voice)"]]
       : state.graphMode === "games"
-      ? [["Games together", "var(--series-game)"]]
+      ? [[gamesLabel, "var(--series-game)"]]
       : [
           ["Voice only", "var(--series-voice)"],
           ["Games only", "var(--series-game)"],
@@ -455,10 +472,31 @@
     });
   }
 
+  let lastGraphFilter; // undefined so the very first call always fetches
+
   async function loadGraph() {
-    const data = await api("/api/graph", { min_seconds: 0 });
+    const filter = currentGraphGameFilter();
+    // Mode switches that don't change the effective game filter (e.g.
+    // Combined -> Voice, or Games with no game selected -> Combined) don't
+    // need a round trip - the data we already have is still correct.
+    if (state.graphData && filter === lastGraphFilter) {
+      renderGraph();
+      return;
+    }
+    lastGraphFilter = filter;
+    const data = await api("/api/graph", { min_seconds: 0, game: filter });
     state.graphData = data;
     renderGraph();
+  }
+
+  async function loadGraphGameOptions() {
+    const select = document.getElementById("graph-game-filter");
+    const data = await api("/api/games").catch(() => null);
+    select.innerHTML = '<option value="">All games</option>';
+    (data ? data.games : []).forEach((g) => {
+      select.appendChild(el("option", { value: g.game, text: g.game }));
+    });
+    select.value = state.graphGame || "";
   }
 
   function renderGraph() {
@@ -651,13 +689,21 @@
   }
 
   function initGraphControls() {
+    const gameFilter = document.getElementById("graph-game-filter");
+
     document.getElementById("graph-mode").addEventListener("click", (e) => {
       const btn = e.target.closest(".seg-btn");
       if (!btn) return;
       document.querySelectorAll("#graph-mode .seg-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       state.graphMode = btn.dataset.mode;
-      renderGraph();
+      gameFilter.hidden = state.graphMode !== "games";
+      loadGraph();
+    });
+
+    gameFilter.addEventListener("change", () => {
+      state.graphGame = gameFilter.value || null;
+      loadGraph();
     });
 
     const thresholdInput = document.getElementById("graph-threshold");

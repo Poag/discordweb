@@ -199,12 +199,15 @@ def _voice_pairwise(guild_id: int, year_bounds: Optional[Tuple[int, int]] = None
     return _grouped_pairwise(rows, 0)
 
 
-def _game_pairwise(guild_id: int, year_bounds: Optional[Tuple[int, int]] = None):
+def _game_pairwise(guild_id: int, year_bounds: Optional[Tuple[int, int]] = None, game: Optional[str] = None):
     sql = "SELECT game, user_id, start_time, end_time FROM sessions WHERE guild_id = ?"
     params: List = [guild_id]
     if year_bounds:
         sql += " AND start_time >= ? AND start_time < ?"
         params.extend(year_bounds)
+    if game:
+        sql += " AND game = ?"
+        params.append(game)
     sql += " ORDER BY game"
     with db.gamelog_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
@@ -212,9 +215,14 @@ def _game_pairwise(guild_id: int, year_bounds: Optional[Tuple[int, int]] = None)
     return _grouped_pairwise(rows, 0)
 
 
-def get_graph(guild_id: int, min_seconds: int = 60) -> dict:
+def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) -> dict:
+    """game restricts every "together" computation (edges, node totals, the
+    per-edge game breakdown) to that one game rather than all games summed -
+    the relationship graph's "just this game" filter. None (the default)
+    keeps the original all-games view.
+    """
     voice_total, voice_breakdown = _voice_pairwise(guild_id)
-    game_total, game_breakdown = _game_pairwise(guild_id)
+    game_total, game_breakdown = _game_pairwise(guild_id, game=game)
 
     with db.voicelog_conn() as conn:
         voice_by_user = dict(conn.execute(
@@ -222,10 +230,13 @@ def get_graph(guild_id: int, min_seconds: int = 60) -> dict:
             (guild_id,),
         ).fetchall())
     with db.gamelog_conn() as conn:
-        game_by_user = dict(conn.execute(
-            "SELECT user_id, SUM(duration) FROM sessions WHERE guild_id = ? GROUP BY user_id",
-            (guild_id,),
-        ).fetchall())
+        game_by_user_sql = "SELECT user_id, SUM(duration) FROM sessions WHERE guild_id = ?"
+        game_by_user_params: List = [guild_id]
+        if game:
+            game_by_user_sql += " AND game = ?"
+            game_by_user_params.append(game)
+        game_by_user_sql += " GROUP BY user_id"
+        game_by_user = dict(conn.execute(game_by_user_sql, game_by_user_params).fetchall())
         top_game_by_user = {}
         for row in conn.execute(
             "SELECT user_id, game, SUM(duration) AS total FROM sessions WHERE guild_id = ? "

@@ -126,10 +126,11 @@ def api_game_top10(game: str, guild_id: Optional[int] = None, allowed: Optional[
 def api_graph(
     guild_id: Optional[int] = None,
     min_seconds: int = Query(60, ge=0),
+    game: Optional[str] = None,
     allowed: Optional[Set[int]] = Depends(get_allowed_guilds),
 ):
     gid = _resolve_guild(guild_id, allowed)
-    return {"guild_id": str(gid), **queries.get_graph(gid, min_seconds)}
+    return {"guild_id": str(gid), **queries.get_graph(gid, min_seconds, game)}
 
 
 @app.get("/api/users")

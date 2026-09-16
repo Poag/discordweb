@@ -158,7 +158,7 @@ logged in, and 404s a `guild_id` you're logged in but not a member of.
 | `GET /api/games` | every logged game, sorted by total time |
 | `GET /api/games/{game}/top10` | top 10 players of a specific game |
 | `GET /api/games/timeline?top_n=` | monthly game-time mix: the top N games (by all-time total, `top_n` default 7, max 8) as fixed series plus an "Other" catch-all, raw seconds per game per month - the frontend normalizes to a 100% stacked chart itself |
-| `GET /api/graph?min_seconds=` | relationship graph: nodes + edges (voice/game overlap seconds, plus per-channel/per-game breakdown for tooltips) |
+| `GET /api/graph?min_seconds=&game=` | relationship graph: nodes + edges (voice/game overlap seconds, plus per-channel/per-game breakdown for tooltips). `game` (optional) scopes every game-related number to that one game instead of summing all games |
 | `GET /api/users` | every known user (id + resolved name), for the "Your Year" picker |
 | `GET /api/years` | calendar years with any logged activity |
 | `GET /api/wrapped?user_id=&year=` | one person's year-in-review: totals, ranks, top games, top voice/game partner, busiest month, longest sessions. 404s if that person has no activity that year |
