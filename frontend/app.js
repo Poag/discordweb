@@ -598,6 +598,14 @@
       ? new Set(nodes.filter((n) => n.name.toLowerCase().includes(q)).map((n) => n.id))
       : null;
 
+    // Clicking a node pins its highlight so it survives the mouse moving
+    // away - lets you click someone, then freely mouse around the rest of
+    // the graph (or read the tooltip) without losing their connections.
+    // Hovering a different node still shows a live preview; leaving it
+    // reverts to the pin (or to the search match/nothing) instead of
+    // always clearing. Click the background to unpin.
+    let pinnedId = null;
+
     function applyHighlight(focusId) {
       const highlightSet = focusId
         ? new Set([focusId, ...graph.neighborMap.get(focusId)])
@@ -609,6 +617,9 @@
         const on = highlightSet.has(d.source.id ?? d.source) && highlightSet.has(d.target.id ?? d.target);
         return on ? 0.9 : 0.05;
       });
+      circle
+        .attr("stroke", (d) => d.id === pinnedId ? "#ffffff" : "rgba(255,255,255,0.25)")
+        .attr("stroke-width", (d) => d.id === pinnedId ? 3 : 1.5);
     }
     applyHighlight(null);
 
@@ -640,7 +651,19 @@
         tooltip.style.left = Math.min(event.clientX - rect.left + 14, rect.width - 250) + "px";
         tooltip.style.top = Math.min(event.clientY - rect.top + 14, rect.height - 100) + "px";
       })
-      .on("mouseleave", () => { applyHighlight(null); hideTooltip(); });
+      .on("mouseleave", () => { applyHighlight(pinnedId); hideTooltip(); })
+      .on("click", (event, d) => {
+        event.stopPropagation();
+        pinnedId = pinnedId === d.id ? null : d.id;
+        applyHighlight(pinnedId);
+      });
+
+    // A click that isn't on a node (the node handler above stops it from
+    // getting here) means "click off them" - clear the pin.
+    svg.on("click", () => {
+      pinnedId = null;
+      applyHighlight(null);
+    });
 
     link
       .on("mouseenter", (event, d) => {
