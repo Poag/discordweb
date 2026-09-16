@@ -38,6 +38,9 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: var(--page);
   color: var(--text-primary);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -149,10 +152,29 @@ body {
   border-bottom-color: var(--series-voice);
 }
 
-main { padding: 20px 24px 40px; }
+main {
+  padding: 20px 24px 40px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+
+/* The relationship graph is the one view worth filling the rest of the
+   window with (every other tab is normal document flow, sized to its own
+   content) - stretching main's flex-column down through the graph panel
+   into .graph-wrap below, so it fills whatever room the viewport gives
+   it instead of stopping at a fixed pixel height and leaving dead space
+   on a tall window. */
+#tab-graph.active {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
 .stat-grid {
   display: grid;
@@ -346,7 +368,8 @@ tr.clickable:hover td { background: var(--surface-raised); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  height: 640px;
+  flex: 1 1 auto;
+  min-height: 400px; /* floor so a short window doesn't squash it away */
   overflow: hidden;
 }
 
