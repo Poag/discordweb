@@ -11,6 +11,7 @@
   --series-voice: #3987e5;   /* categorical slot 1 - blue */
   --series-game: #d95926;    /* categorical slot 2 - orange */
   --series-both: #9085e9;    /* categorical slot 7 - violet */
+  --series-together: #c98500; /* categorical slot 4 - gold, reused for the stricter "actually together" relationship */
   --good: #0ca30c;
   /* Fixed categorical order (dark mode), validated with the dataviz
      skill's validator: worst adjacent CVD dE 8.4, normal-vision dE 19.3,

@@ -7,15 +7,16 @@
     graphMode: "combined",
     graphThreshold: 300,
     graphSearch: "",
-    graphGame: null, // a specific game name to scope the "Games" mode to, or null for all games
+    graphGame: null, // a specific game name to scope the "Games"/"Together" mode to, or null for all games
     selectedGame: null,
     wrappedControlsLoaded: false,
   };
 
-  // The game filter only applies in "games" mode - switching away from it
-  // (without touching the dropdown) shows the full all-games view again.
+  // The game filter only applies in "games"/"together" mode - switching
+  // away from those (without touching the dropdown) shows the full
+  // all-games view again.
   function currentGraphGameFilter() {
-    return state.graphMode === "games" ? state.graphGame : null;
+    return (state.graphMode === "games" || state.graphMode === "together") ? state.graphGame : null;
   }
 
   // ---------- small helpers ----------
@@ -436,12 +437,14 @@
   function edgeWeight(d) {
     if (state.graphMode === "voice") return d.voice_seconds;
     if (state.graphMode === "games") return d.game_seconds;
+    if (state.graphMode === "together") return d.together_seconds;
     return d.voice_seconds + d.game_seconds;
   }
 
   function edgeColor(d) {
     if (state.graphMode === "voice") return "var(--series-voice)";
     if (state.graphMode === "games") return "var(--series-game)";
+    if (state.graphMode === "together") return "var(--series-together)";
     return seriesColor(d.voice_seconds, d.game_seconds);
   }
 
@@ -455,10 +458,15 @@
     const gamesLabel = state.graphMode === "games" && state.graphGame
       ? `${state.graphGame} together`
       : "Games together";
+    const togetherLabel = state.graphMode === "together" && state.graphGame
+      ? `${state.graphGame}, in the same call`
+      : "Actually played together";
     const items = state.graphMode === "voice"
       ? [["Voice together", "var(--series-voice)"]]
       : state.graphMode === "games"
       ? [[gamesLabel, "var(--series-game)"]]
+      : state.graphMode === "together"
+      ? [[togetherLabel, "var(--series-together)"]]
       : [
           ["Voice only", "var(--series-voice)"],
           ["Games only", "var(--series-game)"],
@@ -513,6 +521,7 @@
     const edges = state.graphData.edges.filter((e) => {
       if (state.graphMode === "voice" && e.voice_seconds <= 0) return false;
       if (state.graphMode === "games" && e.game_seconds <= 0) return false;
+      if (state.graphMode === "together" && e.together_seconds <= 0) return false;
       return edgeWeight(e) >= threshold;
     });
 
@@ -621,6 +630,7 @@
           `<div class="tt-title">${d.name}</div>` +
           `<div class="tt-line">Voice: ${formatDuration(d.voice_seconds)}</div>` +
           `<div class="tt-line">Games: ${formatDuration(d.game_seconds)}</div>` +
+          `<div class="tt-line">Actually played together: ${formatDuration(d.together_seconds)}</div>` +
           (d.top_game ? `<div class="tt-line">Most played: ${d.top_game}</div>` : ""),
           event.clientX - rect.left, event.clientY - rect.top
         );
@@ -639,12 +649,16 @@
           .map((c) => `<div class="tt-line">${c.name}: ${formatDuration(c.seconds)}</div>`).join("");
         const gameLines = (d.top_games || [])
           .map((g) => `<div class="tt-line">${g.game}: ${formatDuration(g.seconds)}</div>`).join("");
+        const togetherLines = (d.top_together || [])
+          .map((t) => `<div class="tt-line">${t.label}: ${formatDuration(t.seconds)}</div>`).join("");
         showTooltip(
           `<div class="tt-title">${d.source.name || d.source}  &harr;  ${d.target.name || d.target}</div>` +
           `<div class="tt-line">Voice together: ${formatDuration(d.voice_seconds)}</div>` +
           channelLines +
           `<div class="tt-line">Gaming together: ${formatDuration(d.game_seconds)}</div>` +
-          gameLines,
+          gameLines +
+          `<div class="tt-line">Actually played together (same game, same call): ${formatDuration(d.together_seconds)}</div>` +
+          togetherLines,
           event.clientX - rect.left, event.clientY - rect.top
         );
       })
@@ -697,7 +711,7 @@
       document.querySelectorAll("#graph-mode .seg-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       state.graphMode = btn.dataset.mode;
-      gameFilter.hidden = state.graphMode !== "games";
+      gameFilter.hidden = !(state.graphMode === "games" || state.graphMode === "together");
       loadGraph();
     });
 

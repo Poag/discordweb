@@ -19,7 +19,12 @@ as both cogs' own docstrings describe.
 - **Co-occurrence graph** (`backend/overlap.py`): a sweep-line algorithm computes, for every
   pair of users, how many seconds they spent in the same voice channel or playing the same
   game at overlapping times. Cost tracks actual concurrency, not the total number of logged
-  sessions, so it stays fast even with a lot of history.
+  sessions, so it stays fast even with a lot of history. "Games together" only means both had
+  overlapping sessions in that game - not that they were in a call together. The graph's
+  "Together" mode is the stricter check: same game **and** same voice channel **and** the same
+  moment, found by intersecting each person's own game and voice sessions before the pairwise
+  sweep runs, so a shared game and a shared call that just happen to overlap by chance don't
+  get counted as playing together.
 - **Frontend** (`frontend/`): a single static page (no build step) using D3 (vendored locally
   in `frontend/vendor/` — no CDN dependency, works fully offline) for the force-directed graph,
   plus plain HTML/CSS for the leaderboard and stats views.
@@ -158,7 +163,7 @@ logged in, and 404s a `guild_id` you're logged in but not a member of.
 | `GET /api/games` | every logged game, sorted by total time |
 | `GET /api/games/{game}/top10` | top 10 players of a specific game |
 | `GET /api/games/timeline?top_n=` | monthly game-time mix: the top N games (by all-time total, `top_n` default 7, max 8) as fixed series plus an "Other" catch-all, raw seconds per game per month - the frontend normalizes to a 100% stacked chart itself |
-| `GET /api/graph?min_seconds=&game=` | relationship graph: nodes + edges (voice/game overlap seconds, plus per-channel/per-game breakdown for tooltips). `game` (optional) scopes every game-related number to that one game instead of summing all games |
+| `GET /api/graph?min_seconds=&game=` | relationship graph: nodes + edges with `voice_seconds`/`game_seconds` (overlapping sessions) and `together_seconds` (the stricter same-game-same-channel-same-time check), plus per-channel/per-game/per-"game in channel" breakdowns for tooltips. `game` (optional) scopes every game-related number to that one game instead of summing all games |
 | `GET /api/users` | every known user (id + resolved name), for the "Your Year" picker |
 | `GET /api/years` | calendar years with any logged activity |
 | `GET /api/wrapped?user_id=&year=` | one person's year-in-review: totals, ranks, top games, top voice/game partner, busiest month, longest sessions. 404s if that person has no activity that year |

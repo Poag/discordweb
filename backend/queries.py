@@ -2,13 +2,14 @@
 dashboard API needs - leaderboards, top10s, the co-occurrence graph, and
 the per-user year-in-review ("wrapped") stats.
 """
+from collections import defaultdict
 from datetime import datetime, timezone
 from itertools import groupby
 from typing import Dict, List, Optional, Tuple
 
 from . import db
 from .names import resolver
-from .overlap import merge_pair_seconds, pairwise_overlap_seconds
+from .overlap import intersect_interval_lists, merge_pair_seconds, pairwise_overlap_seconds
 
 MONTH_NAMES = [
     "January", "February", "March", "April", "May", "June",
@@ -215,6 +216,88 @@ def _game_pairwise(guild_id: int, year_bounds: Optional[Tuple[int, int]] = None,
     return _grouped_pairwise(rows, 0)
 
 
+def _compound_sessions(
+    guild_id: int, year_bounds: Optional[Tuple[int, int]] = None, game: Optional[str] = None
+) -> List[Tuple[Tuple[str, int], int, int, int]]:
+    """Per-user windows where a game session and a voice session overlap -
+    "was playing game G while in voice channel C" - the actual "played
+    together" signal, as opposed to _game_pairwise's "played the same
+    game with overlapping session windows" (which says nothing about
+    whether they were even in a call together). Returns rows of
+    ((game, channel_id), user_id, start, end), sorted by the (game,
+    channel_id) group key so they're ready for a groupby-based pairwise
+    sweep, same shape convention as _grouped_pairwise expects.
+    """
+    game_sql = "SELECT user_id, game, start_time, end_time FROM sessions WHERE guild_id = ?"
+    game_params: List = [guild_id]
+    if year_bounds:
+        game_sql += " AND start_time >= ? AND start_time < ?"
+        game_params.extend(year_bounds)
+    if game:
+        game_sql += " AND game = ?"
+        game_params.append(game)
+    game_sql += " ORDER BY user_id, start_time"
+    with db.gamelog_conn() as conn:
+        game_rows = conn.execute(game_sql, game_params).fetchall()
+
+    voice_sql = "SELECT user_id, channel_id, start_time, end_time FROM voice_sessions WHERE guild_id = ?"
+    voice_params: List = [guild_id]
+    if year_bounds:
+        voice_sql += " AND start_time >= ? AND start_time < ?"
+        voice_params.extend(year_bounds)
+    voice_sql += " ORDER BY user_id, start_time"
+    with db.voicelog_conn() as conn:
+        voice_rows = conn.execute(voice_sql, voice_params).fetchall()
+
+    games_by_user: Dict[int, List[Tuple[int, int, str]]] = defaultdict(list)
+    for r in game_rows:
+        games_by_user[r["user_id"]].append((r["start_time"], r["end_time"], r["game"]))
+    voice_by_user: Dict[int, List[Tuple[int, int, int]]] = defaultdict(list)
+    for r in voice_rows:
+        voice_by_user[r["user_id"]].append((r["start_time"], r["end_time"], r["channel_id"]))
+
+    compound = []
+    for user_id, g_sessions in games_by_user.items():
+        v_sessions = voice_by_user.get(user_id)
+        if not v_sessions:
+            continue
+        for lo, hi, g, c in intersect_interval_lists(g_sessions, v_sessions):
+            compound.append(((g, c), user_id, lo, hi))
+
+    compound.sort(key=lambda row: row[0])
+    return compound
+
+
+def _together_data(
+    guild_id: int, year_bounds: Optional[Tuple[int, int]] = None, game: Optional[str] = None
+) -> Tuple[Dict[Tuple[int, int], int], Dict[Tuple[int, int], Dict[str, int]], Dict[int, int]]:
+    """Genuine "played together" seconds - same game AND same voice
+    channel AND overlapping time - for every pair, plus each person's own
+    total (for node sizing/tooltips). Returns (pair -> total seconds,
+    pair -> {"<game> in <channel>": seconds} breakdown, user_id -> total).
+    """
+    rows = _compound_sessions(guild_id, year_bounds, game)
+
+    user_total: Dict[int, int] = defaultdict(int)
+    for (_, _), uid, lo, hi in rows:
+        user_total[uid] += hi - lo
+
+    pair_total: Dict[Tuple[int, int], int] = {}
+    pair_breakdown: Dict[Tuple[int, int], Dict[str, int]] = {}
+    for key, group in groupby(rows, key=lambda r: r[0]):
+        g, c = key
+        sessions = [(r[1], r[2], r[3]) for r in group]
+        pair_secs = pairwise_overlap_seconds(sessions)
+        if not pair_secs:
+            continue
+        pair_total = merge_pair_seconds(pair_total, pair_secs)
+        label = f"{g} in {resolver.channel(c)}"
+        for pair, secs in pair_secs.items():
+            pair_breakdown.setdefault(pair, {})[label] = secs
+
+    return pair_total, pair_breakdown, dict(user_total)
+
+
 def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) -> dict:
     """game restricts every "together" computation (edges, node totals, the
     per-edge game breakdown) to that one game rather than all games summed -
@@ -223,6 +306,7 @@ def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) 
     """
     voice_total, voice_breakdown = _voice_pairwise(guild_id)
     game_total, game_breakdown = _game_pairwise(guild_id, game=game)
+    together_total, together_breakdown, together_by_user = _together_data(guild_id, game=game)
 
     with db.voicelog_conn() as conn:
         voice_by_user = dict(conn.execute(
@@ -248,6 +332,15 @@ def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) 
     # IDs are Discord snowflakes (64-bit) - they overflow JS's safe integer
     # range (2^53), so every ID that crosses the API boundary must be a
     # string or it will silently corrupt (and collide) once JSON.parse'd.
+    # together_seconds is defined as a subset of both voice and game time
+    # (you can't have been "actually together" for longer than you were
+    # in voice, or than you were in that game) - but the raw session rows
+    # aren't guaranteed non-overlapping per user (a bot restart, a missed
+    # disconnect event), which can occasionally let the geometric
+    # intersection edge past voice_total/game_total's own independently-
+    # computed numbers. Clamping keeps the three numbers honest relative
+    # to each other without trying to perfectly relabel inherently
+    # ambiguous overlapping data.
     user_ids = _all_user_ids(guild_id)
     nodes = [
         {
@@ -255,16 +348,20 @@ def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) 
             "name": resolver.user(uid),
             "voice_seconds": voice_by_user.get(uid, 0),
             "game_seconds": game_by_user.get(uid, 0),
+            "together_seconds": min(
+                together_by_user.get(uid, 0), voice_by_user.get(uid, 0), game_by_user.get(uid, 0)
+            ),
             "top_game": top_game_by_user.get(uid),
         }
         for uid in user_ids
     ]
 
-    all_pairs = set(voice_total) | set(game_total)
+    all_pairs = set(voice_total) | set(game_total) | set(together_total)
     edges = []
     for a, b in all_pairs:
         v = voice_total.get((a, b), 0)
         g = game_total.get((a, b), 0)
+        tog = min(together_total.get((a, b), 0), v, g)
         if v + g < min_seconds:
             continue
         top_channels = sorted(
@@ -273,13 +370,18 @@ def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) 
         top_games = sorted(
             game_breakdown.get((a, b), {}).items(), key=lambda kv: -kv[1]
         )[:3]
+        top_together = sorted(
+            together_breakdown.get((a, b), {}).items(), key=lambda kv: -kv[1]
+        )[:3]
         edges.append({
             "source": str(a),
             "target": str(b),
             "voice_seconds": v,
             "game_seconds": g,
+            "together_seconds": tog,
             "top_channels": [{"name": resolver.channel(int(cid)), "seconds": s} for cid, s in top_channels],
             "top_games": [{"game": game, "seconds": s} for game, s in top_games],
+            "top_together": [{"label": label, "seconds": s} for label, s in top_together],
         })
 
     return {"nodes": nodes, "edges": edges}

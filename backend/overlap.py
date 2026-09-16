@@ -62,3 +62,31 @@ def merge_pair_seconds(*maps: PairSeconds) -> PairSeconds:
         for pair, secs in m.items():
             total[pair] += secs
     return dict(total)
+
+
+def intersect_interval_lists(a: List[Tuple[int, int, object]], b: List[Tuple[int, int, object]]):
+    """Every overlap between two lists of (start, end, label) intervals,
+    each already sorted by start and internally non-overlapping (true of
+    one person's own voice sessions - can't be in two channels at once -
+    and, in practice, their own game sessions too). Used to find "was
+    playing game G while in voice channel C" windows: intersect one
+    person's game sessions with their voice sessions.
+
+    Standard two-pointer sweep (each pointer only advances past an
+    interval once it can no longer overlap anything upcoming in the other
+    list), so it's O(len(a) + len(b)) rather than the O(len(a) * len(b)) a
+    naive all-pairs check would cost.
+
+    Yields (start, end, a_label, b_label) for every overlapping pair.
+    """
+    i, j = 0, 0
+    while i < len(a) and j < len(b):
+        a_start, a_end, a_label = a[i]
+        b_start, b_end, b_label = b[j]
+        lo, hi = max(a_start, b_start), min(a_end, b_end)
+        if lo < hi:
+            yield (lo, hi, a_label, b_label)
+        if a_end < b_end:
+            i += 1
+        else:
+            j += 1
