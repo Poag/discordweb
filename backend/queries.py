@@ -8,6 +8,7 @@ from itertools import groupby
 from typing import Dict, List, Optional, Tuple
 
 from . import db
+from .games import resolver as game_resolver
 from .names import resolver
 from .overlap import intersect_interval_lists, merge_pair_seconds, pairwise_overlap_seconds
 
@@ -43,7 +44,7 @@ def get_overview(guild_id: int) -> dict:
 
     with db.gamelog_conn() as conn:
         game_total, game_users, game_count, game_min, game_max = conn.execute(
-            "SELECT COALESCE(SUM(duration),0), COUNT(DISTINCT user_id), COUNT(DISTINCT game), "
+            "SELECT COALESCE(SUM(duration),0), COUNT(DISTINCT user_id), COUNT(DISTINCT game_key(game)), "
             "MIN(start_time), MAX(end_time) FROM sessions WHERE guild_id = ?",
             (guild_id,),
         ).fetchone()
@@ -133,17 +134,17 @@ def get_voice_leaderboard(guild_id: int, limit: int = 10) -> List[dict]:
 def get_games_list(guild_id: int) -> List[dict]:
     with db.gamelog_conn() as conn:
         rows = conn.execute(
-            "SELECT game, SUM(duration) AS total, COUNT(DISTINCT user_id) AS players "
-            "FROM sessions WHERE guild_id = ? GROUP BY game ORDER BY total DESC",
+            "SELECT game_key(game) AS gkey, SUM(duration) AS total, COUNT(DISTINCT user_id) AS players "
+            "FROM sessions WHERE guild_id = ? GROUP BY gkey ORDER BY total DESC",
             (guild_id,),
         ).fetchall()
-    return [{"game": r["game"], "seconds": r["total"], "players": r["players"]} for r in rows]
+    return [{"game": game_resolver.display(r["gkey"]), "seconds": r["total"], "players": r["players"]} for r in rows]
 
 
 def get_game_top10(guild_id: int, game: str) -> List[dict]:
     with db.gamelog_conn() as conn:
         rows = conn.execute(
-            "SELECT user_id, SUM(duration) AS total FROM sessions WHERE guild_id = ? AND game = ? "
+            "SELECT user_id, SUM(duration) AS total FROM sessions WHERE guild_id = ? AND game_key(game) = game_key(?) "
             "GROUP BY user_id ORDER BY total DESC LIMIT 10",
             (guild_id, game),
         ).fetchall()
@@ -201,18 +202,23 @@ def _voice_pairwise(guild_id: int, year_bounds: Optional[Tuple[int, int]] = None
 
 
 def _game_pairwise(guild_id: int, year_bounds: Optional[Tuple[int, int]] = None, game: Optional[str] = None):
-    sql = "SELECT game, user_id, start_time, end_time FROM sessions WHERE guild_id = ?"
+    # Grouping by game_key(game) rather than the raw column merges session
+    # rows that are the same game logged under slightly different spellings
+    # (case, trademark symbols) - without this, two people playing the same
+    # game could show zero overlap just because their clients reported the
+    # activity name a little differently.
+    sql = "SELECT game_key(game) AS gkey, user_id, start_time, end_time FROM sessions WHERE guild_id = ?"
     params: List = [guild_id]
     if year_bounds:
         sql += " AND start_time >= ? AND start_time < ?"
         params.extend(year_bounds)
     if game:
-        sql += " AND game = ?"
+        sql += " AND game_key(game) = game_key(?)"
         params.append(game)
-    sql += " ORDER BY game"
+    sql += " ORDER BY gkey"
     with db.gamelog_conn() as conn:
         rows = conn.execute(sql, params).fetchall()
-    rows = [(r["game"], r["user_id"], r["start_time"], r["end_time"]) for r in rows]
+    rows = [(r["gkey"], r["user_id"], r["start_time"], r["end_time"]) for r in rows]
     return _grouped_pairwise(rows, 0)
 
 
@@ -228,13 +234,13 @@ def _compound_sessions(
     channel_id) group key so they're ready for a groupby-based pairwise
     sweep, same shape convention as _grouped_pairwise expects.
     """
-    game_sql = "SELECT user_id, game, start_time, end_time FROM sessions WHERE guild_id = ?"
+    game_sql = "SELECT user_id, game_key(game) AS gkey, start_time, end_time FROM sessions WHERE guild_id = ?"
     game_params: List = [guild_id]
     if year_bounds:
         game_sql += " AND start_time >= ? AND start_time < ?"
         game_params.extend(year_bounds)
     if game:
-        game_sql += " AND game = ?"
+        game_sql += " AND game_key(game) = game_key(?)"
         game_params.append(game)
     game_sql += " ORDER BY user_id, start_time"
     with db.gamelog_conn() as conn:
@@ -251,7 +257,7 @@ def _compound_sessions(
 
     games_by_user: Dict[int, List[Tuple[int, int, str]]] = defaultdict(list)
     for r in game_rows:
-        games_by_user[r["user_id"]].append((r["start_time"], r["end_time"], r["game"]))
+        games_by_user[r["user_id"]].append((r["start_time"], r["end_time"], r["gkey"]))
     voice_by_user: Dict[int, List[Tuple[int, int, int]]] = defaultdict(list)
     for r in voice_rows:
         voice_by_user[r["user_id"]].append((r["start_time"], r["end_time"], r["channel_id"]))
@@ -291,7 +297,7 @@ def _together_data(
         if not pair_secs:
             continue
         pair_total = merge_pair_seconds(pair_total, pair_secs)
-        label = f"{g} in {resolver.channel(c)}"
+        label = f"{game_resolver.display(g)} in {resolver.channel(c)}"
         for pair, secs in pair_secs.items():
             pair_breakdown.setdefault(pair, {})[label] = secs
 
@@ -317,17 +323,17 @@ def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) 
         game_by_user_sql = "SELECT user_id, SUM(duration) FROM sessions WHERE guild_id = ?"
         game_by_user_params: List = [guild_id]
         if game:
-            game_by_user_sql += " AND game = ?"
+            game_by_user_sql += " AND game_key(game) = game_key(?)"
             game_by_user_params.append(game)
         game_by_user_sql += " GROUP BY user_id"
         game_by_user = dict(conn.execute(game_by_user_sql, game_by_user_params).fetchall())
         top_game_by_user = {}
         for row in conn.execute(
-            "SELECT user_id, game, SUM(duration) AS total FROM sessions WHERE guild_id = ? "
-            "GROUP BY user_id, game ORDER BY user_id, total DESC",
+            "SELECT user_id, game_key(game) AS gkey, SUM(duration) AS total FROM sessions WHERE guild_id = ? "
+            "GROUP BY user_id, gkey ORDER BY user_id, total DESC",
             (guild_id,),
         ).fetchall():
-            top_game_by_user.setdefault(row["user_id"], row["game"])
+            top_game_by_user.setdefault(row["user_id"], game_resolver.display(row["gkey"]))
 
     # IDs are Discord snowflakes (64-bit) - they overflow JS's safe integer
     # range (2^53), so every ID that crosses the API boundary must be a
@@ -380,7 +386,7 @@ def get_graph(guild_id: int, min_seconds: int = 60, game: Optional[str] = None) 
             "game_seconds": g,
             "together_seconds": tog,
             "top_channels": [{"name": resolver.channel(int(cid)), "seconds": s} for cid, s in top_channels],
-            "top_games": [{"game": game, "seconds": s} for game, s in top_games],
+            "top_games": [{"game": game_resolver.display(g), "seconds": s} for g, s in top_games],
             "top_together": [{"label": label, "seconds": s} for label, s in top_together],
         })
 
@@ -459,9 +465,9 @@ def get_wrapped(guild_id: int, user_id: int, year: int) -> Optional[dict]:
             (guild_id, user_id, ys, ye),
         ).fetchone()[0]
         top_games = conn.execute(
-            "SELECT game, SUM(duration) AS total FROM sessions "
+            "SELECT game_key(game) AS gkey, SUM(duration) AS total FROM sessions "
             "WHERE guild_id = ? AND user_id = ? AND start_time >= ? AND start_time < ? "
-            "GROUP BY game ORDER BY total DESC LIMIT 5",
+            "GROUP BY gkey ORDER BY total DESC LIMIT 5",
             (guild_id, user_id, ys, ye),
         ).fetchall()
         longest_game = conn.execute(
@@ -513,7 +519,7 @@ def get_wrapped(guild_id: int, user_id: int, year: int) -> Optional[dict]:
         "active_days": len(voice_days | game_days),
         "voice_rank": _rank_of(guild_id, user_id, year_bounds, "voice_sessions"),
         "game_rank": _rank_of(guild_id, user_id, year_bounds, "sessions"),
-        "top_games": [{"game": r["game"], "seconds": r["total"]} for r in top_games],
+        "top_games": [{"game": game_resolver.display(r["gkey"]), "seconds": r["total"]} for r in top_games],
         "top_voice_channel": (
             {"name": resolver.channel(top_channel_row["channel_id"]), "seconds": top_channel_row["total"]}
             if top_channel_row else None
@@ -527,7 +533,7 @@ def get_wrapped(guild_id: int, user_id: int, year: int) -> Optional[dict]:
                 "user_id": str(top_game_partner[0]),
                 "name": resolver.user(top_game_partner[0]),
                 "seconds": top_game_partner[1],
-                "top_games": [{"game": g, "seconds": s} for g, s in top_game_partner_games],
+                "top_games": [{"game": game_resolver.display(g), "seconds": s} for g, s in top_game_partner_games],
             }
             if top_game_partner else None
         ),
@@ -541,7 +547,7 @@ def get_wrapped(guild_id: int, user_id: int, year: int) -> Optional[dict]:
         ),
         "longest_game_session": (
             {
-                "game": longest_game["game"],
+                "game": game_resolver.display(longest_game["game"]),
                 "seconds": longest_game["duration"],
                 "date": longest_game["start_time"],
             }
@@ -598,20 +604,20 @@ def get_game_timeline(guild_id: int, top_n: int = 7) -> dict:
     """
     with db.gamelog_conn() as conn:
         top_games = [
-            row["game"]
+            game_resolver.display(row["gkey"])
             for row in conn.execute(
-                "SELECT game, SUM(duration) AS total FROM sessions WHERE guild_id = ? "
-                "GROUP BY game ORDER BY total DESC LIMIT ?",
+                "SELECT game_key(game) AS gkey, SUM(duration) AS total FROM sessions WHERE guild_id = ? "
+                "GROUP BY gkey ORDER BY total DESC LIMIT ?",
                 (guild_id, top_n),
             )
         ]
         rows = conn.execute(
-            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game, SUM(duration) AS total "
-            "FROM sessions WHERE guild_id = ? GROUP BY ym, game ORDER BY ym",
+            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game_key(game) AS gkey, SUM(duration) AS total "
+            "FROM sessions WHERE guild_id = ? GROUP BY ym, gkey ORDER BY ym",
             (guild_id,),
         ).fetchall()
 
-    return _build_month_series([(r["ym"], r["game"], r["total"]) for r in rows], top_games)
+    return _build_month_series([(r["ym"], game_resolver.display(r["gkey"]), r["total"]) for r in rows], top_games)
 
 
 def get_user_game_timeline(guild_id: int, user_id: int, year: int, top_n: int = 5) -> dict:
@@ -621,19 +627,19 @@ def get_user_game_timeline(guild_id: int, user_id: int, year: int, top_n: int = 
     ys, ye = _year_bounds(year)
     with db.gamelog_conn() as conn:
         top_games = [
-            row["game"]
+            game_resolver.display(row["gkey"])
             for row in conn.execute(
-                "SELECT game, SUM(duration) AS total FROM sessions "
+                "SELECT game_key(game) AS gkey, SUM(duration) AS total FROM sessions "
                 "WHERE guild_id = ? AND user_id = ? AND start_time >= ? AND start_time < ? "
-                "GROUP BY game ORDER BY total DESC LIMIT ?",
+                "GROUP BY gkey ORDER BY total DESC LIMIT ?",
                 (guild_id, user_id, ys, ye, top_n),
             )
         ]
         rows = conn.execute(
-            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game, SUM(duration) AS total "
+            "SELECT strftime('%Y-%m', start_time, 'unixepoch') AS ym, game_key(game) AS gkey, SUM(duration) AS total "
             "FROM sessions WHERE guild_id = ? AND user_id = ? AND start_time >= ? AND start_time < ? "
-            "GROUP BY ym, game ORDER BY ym",
+            "GROUP BY ym, gkey ORDER BY ym",
             (guild_id, user_id, ys, ye),
         ).fetchall()
 
-    return _build_month_series([(r["ym"], r["game"], r["total"]) for r in rows], top_games)
+    return _build_month_series([(r["ym"], game_resolver.display(r["gkey"]), r["total"]) for r in rows], top_games)

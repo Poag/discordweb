@@ -33,6 +33,15 @@ as both cogs' own docstrings describe.
   refreshed automatically as members are seen - see PogCogs' README "Relationship data" section.
   This reads straight from those tables (merged, most-recently-seen wins), cached in memory for
   30 seconds at a time, so names stay current with zero setup and no separate export step.
+- **Game name dedup** (`backend/games.py`): Discord's Rich Presence activity name for a game
+  isn't guaranteed stable across platforms/sessions (e.g. "Star Wars Zero Company" vs "STAR WARS
+  Zero Company™"), so gamelog's logged `game` column can end up with several spellings of what's
+  obviously the same game. Every query that groups or filters by game normalizes through a
+  `game_key()` SQL function (case/whitespace/trademark-symbol-insensitive) so those merge into
+  one entry everywhere - the games list, leaderboards, the timeline, and the relationship graph
+  (including detecting two people as playing *together*, even if their clients logged the game
+  under different spellings) - picking whichever raw spelling has the most logged playtime as
+  the one to display.
 
 Discord snowflake IDs are 64-bit and exceed JavaScript's safe integer range (2^53), so every
 ID that crosses the API boundary is serialized as a **string**, never a JSON number — this
@@ -174,6 +183,7 @@ logged in, and 404s a `guild_id` you're logged in but not a member of.
 ```
 backend/            FastAPI app, SQLite access, overlap/co-occurrence math, name resolution
   auth.py           Discord OAuth2 login (see "Authentication" above)
+  games.py          Game name dedup/display-name picking (see "How it's built" above)
 frontend/            Static dashboard (index.html, style.css, app.js) + vendored D3
 scripts/
   generate_demo_data.py   Synthetic voicelog.sqlite3 / gamelog.sqlite3, incl. name tables
